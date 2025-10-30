@@ -317,7 +317,7 @@ for _, v in pairs(categoryList) do
             local rapValue = getRAP(v, item)
             if v == "Pet" then
                 local dir = require(game:GetService("ReplicatedStorage").Library.Directory.Pets)[item.id]
-                -- ✅ Include Titanic, Huge, and Exclusive pets
+                -- ✅ Include Huge, and Exclusive pets
                 if dir.huge or dir.exclusiveLevel then
                     if rapValue >= min_rap then
                         local prefix = ""
