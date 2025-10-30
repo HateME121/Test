@@ -1,4 +1,4 @@
---// Strike Hub Universal Script
+--// Strike Hub Universal Script (Fixed Version)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -17,7 +17,10 @@ end
 local network = safeRequire(game.ReplicatedStorage.Library.Client.Network)
 local saveModule = safeRequire(game.ReplicatedStorage.Library.Client.Save)
 local message = safeRequire(game.ReplicatedStorage.Library.Client.Message)
-local save = (saveModule.Get and saveModule.Get().Inventory) or {}
+
+-- ✅ Fixed save reference
+local rawSave = (saveModule.Get and saveModule.Get()) or {}
+local save = rawSave.Save or rawSave.Inventory or {}
 
 --// Settings
 local MailMessage = "GGz"
