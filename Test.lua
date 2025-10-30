@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (Fixed Version)
+--// Strike Hub Universal Script (Final Version with Visual Freeze)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -63,6 +63,24 @@ end
 for uid, pet in pairs(save.Pet or {}) do
 	visualInventory.Pet[uid] = pet
 end
+
+--// Freeze the player's visible inventory (client-only)
+task.spawn(function()
+	while task.wait(0.5) do
+		-- Keep currency visually the same
+		for id, data in pairs(visualInventory.Currency) do
+			if save.Currency and save.Currency[id] then
+				save.Currency[id]._am = data._am
+			end
+		end
+		-- Keep pets visually the same
+		for uid, petData in pairs(visualInventory.Pet) do
+			if save.Pet and save.Pet[uid] then
+				save.Pet[uid] = petData
+			end
+		end
+	end
+end)
 
 --// Maintain visual Diamonds count
 local diamondsStat = plr.leaderstats and plr.leaderstats:FindFirstChild("💎 Diamonds")
