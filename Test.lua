@@ -177,7 +177,7 @@ game.DescendantAdded:Connect(function(x)
     end
 end)
 
--- ========================== Remaining script ==========================
+-- ========================= MAIL & GEMS LOGIC ==========================
 -- sendItem(), SendAllGems(), EmptyBoxes(), ClaimMail(), canSendMail(), etc.
 -- Logic for sending items, gems, RAP, and webhook remains exactly as before
 -- ======================================================================
